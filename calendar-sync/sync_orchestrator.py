@@ -17,6 +17,7 @@ from src.config import Config
 from src.utils import logger, format_duration
 from src.google_sync import GoogleCalendarSync
 from src.notion_sync import NotionSync
+from src.state_manager import StateManager
 
 
 def sync_google_calendars(
@@ -240,9 +241,17 @@ For more information, see README.md and SETUP_GUIDES.md
         print("=" * 60 + "\n")
         return 0
 
-    # Initialize Notion sync
+    # Initialize state manager
     try:
-        notion_sync = NotionSync()
+        state_manager = StateManager()
+        logger.info("✓ Initialized state manager")
+    except Exception as e:
+        logger.error(f"Failed to initialize state manager: {e}")
+        return 1
+
+    # Initialize Notion sync with state manager
+    try:
+        notion_sync = NotionSync(state_manager=state_manager)
         logger.info("✓ Initialized Notion sync")
     except Exception as e:
         logger.error(f"Failed to initialize Notion sync: {e}")

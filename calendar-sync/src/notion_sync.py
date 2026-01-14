@@ -13,11 +13,37 @@ from src.config import Config
 from src.utils import logger, retry_with_backoff, RateLimiter
 
 
+# Properties that are synced from Google Calendar (should be updated)
+SYNCED_PROPERTIES = [
+    "Title",
+    "Start Time",
+    "End Time",
+    "Location",
+    "Attendees",
+    "URL",
+    "External ID",
+    "Source",
+    "Sync Status",
+    "Last Synced",
+]
+
+# Properties that users can edit (will not be overwritten)
+USER_EDITABLE_PROPERTIES = [
+    "Description",  # Users can add notes
+    # Any custom properties you add to the database
+]
+
+
 class NotionSync:
     """Handles Notion API operations for syncing calendar events"""
 
-    def __init__(self):
-        """Initialize Notion client and rate limiter"""
+    def __init__(self, state_manager=None):
+        """
+        Initialize Notion client and rate limiter
+
+        Args:
+            state_manager: Optional StateManager instance for fast duplicate checking
+        """
         if not Config.NOTION_TOKEN:
             raise ValueError("NOTION_TOKEN not set in configuration")
 
@@ -28,8 +54,10 @@ class NotionSync:
         # Cache for database schemas
         self._database_schemas: Dict[str, Any] = {}
 
-        # Simple in-memory cache for external ID -> page ID mapping
-        # This will be replaced by SQLite state manager in the enhanced version
+        # State manager for fast lookups (optional for backward compatibility)
+        self.state_manager = state_manager
+
+        # Fallback in-memory cache if no state manager
         self._external_id_cache: Dict[str, str] = {}
 
     @retry_with_backoff(max_retries=3, exceptions=(APIResponseError,))
@@ -108,11 +136,15 @@ class NotionSync:
         Returns:
             Notion page ID if found, None otherwise
         """
-        # Check cache first
+        # Use state manager if available (fast local lookup)
+        if self.state_manager:
+            return self.state_manager.get_notion_page_id(external_id)
+
+        # Fallback: Check in-memory cache
         if external_id in self._external_id_cache:
             return self._external_id_cache[external_id]
 
-        # Query Notion database
+        # Fallback: Query Notion database (slow)
         try:
             self.rate_limiter.wait_if_needed()
             results = self.client.databases.query(
@@ -156,10 +188,22 @@ class NotionSync:
 
             page_id = response["id"]
 
-            # Cache the external ID mapping
+            # Extract external ID and source
             external_id = properties.get("External ID", {}).get("rich_text", [{}])[0].get("text", {}).get("content")
+            source = properties.get("Source", {}).get("select", {}).get("name", "unknown")
+
+            # Save to state manager if available
             if external_id:
                 self._external_id_cache[external_id] = page_id
+
+                if self.state_manager:
+                    self.state_manager.save_mapping(
+                        external_id=external_id,
+                        notion_page_id=page_id,
+                        source=source,
+                        event_type="calendar",
+                        synced_properties=SYNCED_PROPERTIES
+                    )
 
             logger.debug(f"Created event: {properties['Title']['title'][0]['text']['content']}")
             return page_id
@@ -169,20 +213,38 @@ class NotionSync:
             return None
 
     @retry_with_backoff(max_retries=3, exceptions=(APIResponseError,))
-    def update_event(self, page_id: str, properties: Dict[str, Any]) -> bool:
+    def update_event(
+        self,
+        page_id: str,
+        properties: Dict[str, Any],
+        selective: bool = True
+    ) -> bool:
         """
         Update an existing event page in Notion
 
         Args:
             page_id: Notion page ID to update
             properties: Updated properties
+            selective: If True, only update synced properties (preserve user edits)
 
         Returns:
             True if successful, False otherwise
         """
         try:
+            # If selective update, only include synced properties
+            if selective:
+                filtered_properties = {
+                    key: value
+                    for key, value in properties.items()
+                    if key in SYNCED_PROPERTIES
+                }
+                update_properties = filtered_properties
+                logger.debug(f"Selective update: only updating {list(filtered_properties.keys())}")
+            else:
+                update_properties = properties
+
             self.rate_limiter.wait_if_needed()
-            self.client.pages.update(page_id=page_id, properties=properties)
+            self.client.pages.update(page_id=page_id, properties=update_properties)
             logger.debug(f"Updated event: {page_id}")
             return True
 

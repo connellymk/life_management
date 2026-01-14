@@ -92,8 +92,8 @@ class Config:
         # Check required Notion settings
         if not cls.NOTION_TOKEN:
             errors.append("NOTION_TOKEN not set in .env file")
-        elif not cls.NOTION_TOKEN.startswith("secret_"):
-            errors.append("NOTION_TOKEN should start with 'secret_'")
+        elif not (cls.NOTION_TOKEN.startswith("secret_") or cls.NOTION_TOKEN.startswith("ntn_")):
+            errors.append("NOTION_TOKEN should start with 'secret_' or 'ntn_'")
 
         if not cls.NOTION_CALENDAR_DB_ID:
             errors.append("NOTION_CALENDAR_DB_ID not set in .env file")

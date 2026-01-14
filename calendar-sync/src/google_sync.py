@@ -228,17 +228,32 @@ class GoogleCalendarSync:
             "Last Synced": {"date": {"start": datetime.now(timezone.utc).isoformat()}},
         }
 
+        # Determine if this is an all-day event
+        is_all_day = "date" in start and "dateTime" not in start
+
         # Add start time
         if start_dt:
-            notion_properties["Start Time"] = {"date": {"start": start_dt}}
+            if is_all_day:
+                # All-day event: Just set the start date, no end
+                # (Google's end date is exclusive, so we ignore it for single-day events)
+                from datetime import datetime as dt, timedelta
+                start_date = dt.fromisoformat(start_dt).date()
+                end_date = dt.fromisoformat(end_dt).date() if end_dt else start_date
 
-        # Add end time
-        if end_dt:
-            # For date ranges, Notion needs both start and end in the same property
-            if start_dt:
-                notion_properties["Start Time"]["date"]["end"] = end_dt
+                # Check if it's truly multi-day (more than 1 day difference)
+                if (end_date - start_date).days > 1:
+                    # Multi-day event: use date range
+                    # Subtract 1 day from end since Google uses exclusive end dates
+                    actual_end = (end_date - timedelta(days=1)).isoformat()
+                    notion_properties["Start Time"] = {"date": {"start": start_dt, "end": actual_end}}
+                else:
+                    # Single all-day event: just start date
+                    notion_properties["Start Time"] = {"date": {"start": start_dt}}
             else:
-                notion_properties["End Time"] = {"date": {"start": end_dt}}
+                # Timed event: use separate Start Time and End Time
+                notion_properties["Start Time"] = {"date": {"start": start_dt}}
+                if end_dt:
+                    notion_properties["End Time"] = {"date": {"start": end_dt}}
 
         # Add location
         if location:
@@ -258,9 +273,18 @@ class GoogleCalendarSync:
 
         # Add attendees (as multi-select)
         if attendee_names:
-            # Notion multi-select has a limit, so take first 10
+            # Notion multi-select doesn't allow commas, so replace them
+            # Also limit to 100 chars per name and take first 10 attendees
+            sanitized_names = []
+            for name in attendee_names[:10]:
+                # Replace commas with spaces (e.g., "Lastname, Firstname" -> "Lastname Firstname")
+                sanitized_name = name.replace(",", " ").strip()
+                # Remove any double spaces
+                sanitized_name = " ".join(sanitized_name.split())
+                sanitized_names.append(sanitized_name[:100])
+
             notion_properties["Attendees"] = {
-                "multi_select": [{"name": name[:100]} for name in attendee_names[:10]]
+                "multi_select": [{"name": name} for name in sanitized_names]
             }
 
         # Add sync status
