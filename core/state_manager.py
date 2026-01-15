@@ -1,6 +1,7 @@
 """
 State management system using SQLite
 Tracks sync history, event mappings, and provides fast duplicate checking
+Supports all integrations (calendar, health, finance, etc.)
 """
 
 import sqlite3
@@ -10,8 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, List, Any
 from contextlib import contextmanager
 
-from src.config import Config
-from src.utils import logger
+from core.utils import logger
 
 
 class StateManager:
@@ -25,7 +25,7 @@ class StateManager:
             db_path: Path to SQLite database (default: state.db in project root)
         """
         if db_path is None:
-            db_path = Config.BASE_DIR / "state.db"
+            db_path = Path(__file__).parent.parent / "state.db"
         else:
             db_path = Path(db_path)
 
@@ -122,7 +122,7 @@ class StateManager:
         Get the last successful sync time for a source
 
         Args:
-            source: Source name (e.g., 'google_personal')
+            source: Source name (e.g., 'google_personal', 'garmin')
 
         Returns:
             Last sync datetime or None if never synced
@@ -260,7 +260,7 @@ class StateManager:
         external_id: str,
         notion_page_id: str,
         source: str,
-        event_type: str = "calendar",
+        event_type: str,
         synced_properties: Optional[List[str]] = None
     ):
         """
@@ -270,7 +270,7 @@ class StateManager:
             external_id: External ID from source system
             notion_page_id: Notion page ID
             source: Source name
-            event_type: Type of event (calendar, workout, task, etc.)
+            event_type: Type of event (calendar, workout, transaction, etc.)
             synced_properties: List of properties that are synced from source
         """
         now = datetime.now(timezone.utc).isoformat()
@@ -538,56 +538,3 @@ class StateManager:
                 cursor.execute("DELETE FROM event_mapping")
                 cursor.execute("DELETE FROM sync_log")
                 logger.info("Reset all state")
-
-
-if __name__ == "__main__":
-    # Test state manager
-    print("Testing State Manager...\n")
-
-    state = StateManager(db_path="test_state.db")
-
-    # Test sync state
-    print("1. Testing sync state...")
-    state.update_sync_state("google_personal", success=True, sync_token="token123")
-    last_sync = state.get_last_sync_time("google_personal")
-    print(f"   Last sync: {last_sync}")
-    sync_token = state.get_sync_token("google_personal")
-    print(f"   Sync token: {sync_token}")
-
-    # Test event mapping
-    print("\n2. Testing event mapping...")
-    state.save_mapping(
-        external_id="google_personal_evt123",
-        notion_page_id="notion123",
-        source="google_personal",
-        event_type="calendar",
-        synced_properties=["Title", "Start Time", "End Time"]
-    )
-    page_id = state.get_notion_page_id("google_personal_evt123")
-    print(f"   Page ID: {page_id}")
-    exists = state.mapping_exists("google_personal_evt123")
-    print(f"   Exists: {exists}")
-
-    # Test sync logging
-    print("\n3. Testing sync logging...")
-    state.log_sync(
-        source="google_personal",
-        status="success",
-        items_synced=10,
-        items_updated=2,
-        duration=5.5
-    )
-    recent = state.get_recent_syncs(limit=1)
-    print(f"   Recent syncs: {len(recent)}")
-
-    # Test statistics
-    print("\n4. Testing statistics...")
-    stats = state.get_sync_stats("google_personal")
-    print(f"   Total syncs: {stats.get('total_syncs', 0)}")
-    print(f"   Total items: {stats.get('total_items_synced', 0)}")
-
-    # Cleanup
-    import os
-    os.remove("test_state.db")
-
-    print("\n✓ All tests passed!")

@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from notion_client import Client
 from notion_client.errors import APIResponseError
 
-from src.config import Config
-from src.utils import logger, retry_with_backoff, RateLimiter
+from core.config import Config
+from core.utils import logger, retry_with_backoff, RateLimiter
 
 
 # Properties that are synced from Google Calendar (should be updated)

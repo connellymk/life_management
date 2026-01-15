@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Calendar Sync Orchestrator
-Main script to sync calendars and tasks from multiple sources to Notion
+Syncs Google Calendar (and future: Microsoft Calendar) to Notion
 """
 
 import sys
@@ -10,24 +10,25 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.config import Config
-from src.utils import logger, format_duration
-from src.google_sync import GoogleCalendarSync
-from src.notion_sync import NotionSync
-from src.state_manager import StateManager
+from core.config import GoogleCalendarConfig as Config
+from core.utils import logger, format_duration
+from core.state_manager import StateManager
+from integrations.google_calendar.sync import GoogleCalendarSync
+from notion.calendar import NotionSync
 
 
 def sync_google_calendars(
-    notion_sync: NotionSync, dry_run: bool = False
+    notion_sync: NotionSync, state_manager: StateManager, dry_run: bool = False
 ) -> dict:
     """
     Sync all configured Google Calendars
 
     Args:
         notion_sync: NotionSync instance
+        state_manager: StateManager instance for incremental sync
         dry_run: If True, don't actually create/update in Notion
 
     Returns:
@@ -72,6 +73,8 @@ def sync_google_calendars(
                 calendar_id=calendar_id,
                 calendar_name=calendar_name,
                 notion_sync=notion_sync,
+                state_manager=state_manager,
+                use_incremental=True,
                 dry_run=dry_run,
             )
 
@@ -149,16 +152,15 @@ def print_sync_summary(stats: dict, duration: float, dry_run: bool = False):
 def main():
     """Main orchestrator function"""
     parser = argparse.ArgumentParser(
-        description="Sync calendars and tasks to Notion",
+        description="Sync Google Calendar to Notion",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python sync_orchestrator.py                    # Run full sync
-  python sync_orchestrator.py --dry-run          # See what would be synced
-  python sync_orchestrator.py --calendars-only   # Sync only calendars
-  python sync_orchestrator.py --health-check     # Check system health
+  python orchestrators/sync_calendar.py                 # Run full sync
+  python orchestrators/sync_calendar.py --dry-run       # Preview changes
+  python orchestrators/sync_calendar.py --health-check  # Check system health
 
-For more information, see README.md and SETUP_GUIDES.md
+For more information, see README.md and MIGRATION_GUIDE.md
         """,
     )
 
@@ -166,16 +168,6 @@ For more information, see README.md and SETUP_GUIDES.md
         "--dry-run",
         action="store_true",
         help="Show what would be synced without making changes",
-    )
-    parser.add_argument(
-        "--calendars-only",
-        action="store_true",
-        help="Sync only calendars (skip training, tasks, etc.)",
-    )
-    parser.add_argument(
-        "--training-only",
-        action="store_true",
-        help="Sync only training workouts (not yet implemented)",
     )
     parser.add_argument(
         "--health-check",
@@ -196,13 +188,13 @@ For more information, see README.md and SETUP_GUIDES.md
 
     # Validate configuration
     logger.info("Validating configuration...")
-    errors = Config.validate()
-    if errors:
+    is_valid, errors = Config.validate()
+    if not is_valid:
         logger.error("Configuration errors found:")
         for error in errors:
             logger.error(f"  - {error}")
         logger.error("\nPlease fix these errors in your .env file")
-        logger.error("See SETUP_GUIDES.md for instructions")
+        logger.error("See MIGRATION_GUIDE.md for instructions")
         return 1
 
     logger.info("✓ Configuration valid")
@@ -263,28 +255,11 @@ For more information, see README.md and SETUP_GUIDES.md
 
     try:
         # Sync Google Calendars
-        if not args.training_only:
-            stats = sync_google_calendars(notion_sync, dry_run=args.dry_run)
-            if not stats.get("success", True):
-                overall_success = False
-        else:
-            logger.info("Skipping calendar sync (--training-only)")
-            stats = {
-                "success": True,
-                "calendars_synced": 0,
-                "total_events_fetched": 0,
-                "total_events_created": 0,
-                "total_events_updated": 0,
-                "total_events_skipped": 0,
-                "total_errors": 0,
-            }
-
-        # Future: Sync training workouts
-        if args.training_only or not args.calendars_only:
-            logger.info("\n" + "=" * 60)
-            logger.info("Training sync not yet implemented")
-            logger.info("This will be added in Phase 2")
-            logger.info("=" * 60)
+        stats = sync_google_calendars(
+            notion_sync, state_manager, dry_run=args.dry_run
+        )
+        if not stats.get("success", True):
+            overall_success = False
 
     except KeyboardInterrupt:
         logger.warning("\n\nSync interrupted by user")

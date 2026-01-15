@@ -14,8 +14,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from src.config import Config
-from src.utils import (
+from core.config import GoogleCalendarConfig as Config
+from core.utils import (
     logger,
     retry_with_backoff,
     safe_get,
@@ -172,6 +172,98 @@ class GoogleCalendarSync:
             logger.error(f"Error fetching calendar events: {error}")
             raise
 
+    @retry_with_backoff(max_retries=3, exceptions=(HttpError,))
+    def get_calendar_events_incremental(
+        self,
+        calendar_id: str,
+        sync_token: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> tuple[List[Dict[str, Any]], Optional[str]]:
+        """
+        Fetch events using incremental sync (much faster)
+
+        Args:
+            calendar_id: Google Calendar ID
+            sync_token: Token from previous sync (None for initial sync)
+            start_date: Start date for initial sync
+            end_date: End date for initial sync
+
+        Returns:
+            Tuple of (events list, new sync token)
+        """
+        if not self.service:
+            logger.error("Not authenticated with Google Calendar")
+            return [], None
+
+        try:
+            if sync_token:
+                # Incremental sync - only get changes since last sync
+                logger.info(f"Incremental sync for '{calendar_id}' using sync token")
+                events_result = (
+                    self.service.events()
+                    .list(
+                        calendarId=calendar_id,
+                        syncToken=sync_token,
+                        singleEvents=True,
+                    )
+                    .execute()
+                )
+            else:
+                # Initial sync - get all events in date range
+                if start_date is None:
+                    start_date = datetime.now(timezone.utc) - timedelta(
+                        days=Config.SYNC_LOOKBACK_DAYS
+                    )
+                if end_date is None:
+                    end_date = datetime.now(timezone.utc) + timedelta(
+                        days=Config.SYNC_LOOKAHEAD_DAYS
+                    )
+
+                # Ensure timezone-aware
+                if start_date.tzinfo is None:
+                    start_date = start_date.replace(tzinfo=timezone.utc)
+                if end_date.tzinfo is None:
+                    end_date = end_date.replace(tzinfo=timezone.utc)
+
+                logger.info(f"Initial sync for '{calendar_id}'")
+                logger.info(f"Date range: {start_date.date()} to {end_date.date()}")
+
+                events_result = (
+                    self.service.events()
+                    .list(
+                        calendarId=calendar_id,
+                        timeMin=start_date.isoformat(),
+                        timeMax=end_date.isoformat(),
+                        singleEvents=True,
+                        orderBy="startTime",
+                    )
+                    .execute()
+                )
+
+            events = events_result.get("items", [])
+            new_sync_token = events_result.get("nextSyncToken")
+
+            logger.info(
+                f"Found {len(events)} {'changed' if sync_token else 'total'} events"
+            )
+
+            if new_sync_token:
+                logger.debug(f"Received new sync token for next incremental sync")
+
+            return events, new_sync_token
+
+        except HttpError as error:
+            # Sync token might be invalid/expired
+            if error.resp.status == 410:  # Gone - sync token invalid
+                logger.warning("Sync token invalid, performing full sync")
+                return self.get_calendar_events_incremental(
+                    calendar_id, sync_token=None, start_date=start_date, end_date=end_date
+                )
+            else:
+                logger.error(f"Error fetching calendar events: {error}")
+                raise
+
     def transform_event_to_notion(
         self, event: Dict[str, Any], source_name: str
     ) -> Dict[str, Any]:
@@ -298,6 +390,8 @@ class GoogleCalendarSync:
         calendar_id: str,
         calendar_name: str,
         notion_sync,
+        state_manager=None,
+        use_incremental: bool = True,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -307,6 +401,8 @@ class GoogleCalendarSync:
             calendar_id: Google Calendar ID
             calendar_name: Display name for the calendar
             notion_sync: NotionSync instance
+            state_manager: StateManager instance for incremental sync
+            use_incremental: Use incremental sync if available (much faster)
             dry_run: If True, don't actually create/update in Notion
 
         Returns:
@@ -321,11 +417,31 @@ class GoogleCalendarSync:
             "events_updated": 0,
             "events_skipped": 0,
             "errors": 0,
+            "incremental": False,
+            "new_sync_token": None,
         }
 
         try:
-            # Fetch events from Google Calendar
-            events = self.get_calendar_events(calendar_id)
+            # Try incremental sync if enabled and state manager available
+            source_key = f"google_{calendar_name.lower().replace(' ', '_')}"
+            sync_token = None
+
+            if use_incremental and state_manager:
+                sync_token = state_manager.get_sync_token(source_key)
+                if sync_token:
+                    logger.info("Using incremental sync (only fetching changes)")
+                    stats["incremental"] = True
+
+            if use_incremental and state_manager:
+                # Use incremental sync
+                events, new_sync_token = self.get_calendar_events_incremental(
+                    calendar_id, sync_token=sync_token
+                )
+                stats["new_sync_token"] = new_sync_token
+            else:
+                # Fall back to full sync
+                events = self.get_calendar_events(calendar_id)
+
             stats["events_fetched"] = len(events)
 
             if not events:
@@ -384,9 +500,26 @@ class GoogleCalendarSync:
                 f"{stats['errors']} errors"
             )
 
+            # Save sync token for next incremental sync
+            if state_manager and stats["new_sync_token"]:
+                state_manager.update_sync_state(
+                    source=source_key,
+                    success=True,
+                    sync_token=stats["new_sync_token"]
+                )
+                logger.debug("Saved sync token for next incremental sync")
+
         except Exception as e:
             logger.error(f"Error syncing calendar '{calendar_name}': {e}")
             stats["errors"] += 1
+
+            # Mark sync as failed in state
+            if state_manager:
+                state_manager.update_sync_state(
+                    source=source_key,
+                    success=False,
+                    error=str(e)
+                )
 
         return stats
 

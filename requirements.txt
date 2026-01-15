@@ -1,0 +1,23 @@
+# Google Calendar API
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.0.0
+
+# Garmin Connect API
+garth>=0.4.0
+
+# Notion API
+notion-client>=2.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# HTTP requests
+requests>=2.31.0
+
+# Date/time handling
+python-dateutil>=2.8.0
+
+# Retry logic
+tenacity>=8.2.0

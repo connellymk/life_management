@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional, Callable, Any
 from pathlib import Path
 
-from src.config import Config
+from core.config import Config
 
 
 def setup_logging(name: str = "calendar_sync") -> logging.Logger:
@@ -324,3 +324,71 @@ if __name__ == "__main__":
         print(f"Call {i + 1} at {time.time() - start:.2f}s")
 
     print("\n✓ All tests passed!")
+
+
+# ============================================================
+# Unit Conversion Functions (for health/training data)
+# ============================================================
+
+def convert_meters_to_miles(meters: float) -> float:
+    """Convert meters to miles."""
+    return meters * 0.000621371
+
+
+def convert_meters_to_feet(meters: float) -> float:
+    """Convert meters to feet."""
+    return meters * 3.28084
+
+
+def convert_kg_to_lbs(kg: float) -> float:
+    """Convert kilograms to pounds."""
+    return kg * 2.20462
+
+
+def convert_pace_to_imperial(pace_mps: float) -> str:
+    """
+    Convert pace from meters per second to min/mile.
+
+    Args:
+        pace_mps: Pace in meters per second
+
+    Returns:
+        Formatted pace string like "8:30" (min/mile)
+    """
+    if pace_mps <= 0:
+        return "0:00"
+
+    miles_per_second = pace_mps * 0.000621371
+    seconds_per_mile = 1 / miles_per_second if miles_per_second > 0 else 0
+    minutes = int(seconds_per_mile / 60)
+    seconds = int(seconds_per_mile % 60)
+
+    return f"{minutes}:{seconds:02d}"
+
+
+def retry_api_call(func):
+    """
+    Decorator to retry API calls with exponential backoff.
+    Uses the existing retry_with_backoff decorator.
+    """
+    return retry_with_backoff(max_retries=3)(func)
+
+
+def rate_limit(calls_per_second: float = 3.0):
+    """
+    Decorator to rate limit function calls.
+
+    Args:
+        calls_per_second: Maximum number of calls per second
+
+    Returns:
+        Decorated function that respects rate limits
+    """
+    rate_limiter = RateLimiter(calls_per_second=calls_per_second)
+
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            rate_limiter.wait_if_needed()
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
