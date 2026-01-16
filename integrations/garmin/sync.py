@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import garth
-from garth import Activity, DailySteps, DailySleep, DailyStress, WeightData, DailyHRV
+from garth import Activity, WeightData
+from garth.data import DailySummary, DailySleepData
 
 from core.config import GarminConfig as Config
 from core.utils import (
@@ -194,9 +195,12 @@ class GarminSync:
             # Pace/speed
             avg_speed_mps = activity.average_speed  # meters per second
             pace = None
+            speed = None
             if avg_speed_mps and avg_speed_mps > 0:
                 if self.unit_system == "imperial":
                     pace = convert_pace_to_imperial(avg_speed_mps)
+                    # Convert m/s to mph
+                    speed = round(avg_speed_mps * 2.23694, 2)
                 else:
                     # Convert to min/km
                     km_per_second = avg_speed_mps / 1000
@@ -204,6 +208,8 @@ class GarminSync:
                     minutes = int(seconds_per_km / 60)
                     seconds = int(seconds_per_km % 60)
                     pace = f"{minutes}:{seconds:02d}"
+                    # Convert m/s to km/h
+                    speed = round(avg_speed_mps * 3.6, 2)
 
             # URL
             garmin_url = f"https://connect.garmin.com/modern/activity/{activity_id}"
@@ -222,6 +228,7 @@ class GarminSync:
                 "max_heart_rate": max_hr,
                 "calories": calories,
                 "pace": pace,
+                "speed": speed,
                 "garmin_url": garmin_url,
                 "raw_data": activity,  # Keep raw data for debugging
             }
@@ -248,57 +255,52 @@ class GarminSync:
             if not self.authenticate():
                 return []
 
-        # Default date range (last 30 days)
+        # Default date range - use SYNC_LOOKBACK_DAYS from config
         if end_date is None:
             end_date = datetime.now()
         if start_date is None:
-            start_date = end_date - timedelta(days=30)
+            start_date = end_date - timedelta(days=Config.SYNC_LOOKBACK_DAYS)
 
         try:
             logger.info(f"Fetching daily metrics from {start_date.date()} to {end_date.date()}...")
 
             daily_metrics = []
-            current_date = start_date
 
             # Calculate number of days to fetch
             num_days = (end_date - start_date).days + 1
 
-            # Fetch metrics in bulk using new API
+            # Fetch complete daily summaries using DailySummary
             try:
-                steps_list = DailySteps.list(end=end_date.date(), period=num_days)
-                sleep_list = DailySleep.list(end=end_date.date(), period=num_days)
-                stress_list = DailyStress.list(end=end_date.date(), period=num_days)
-                hrv_list = DailyHRV.list(end=end_date.date(), period=num_days)
+                summaries = DailySummary.list(end=end_date.date(), days=num_days)
+                logger.info(f"Fetched {len(summaries)} daily summaries")
 
-                # Create dictionaries for quick lookup by date
-                steps_by_date = {s.calendar_date: s for s in steps_list}
-                sleep_by_date = {s.calendar_date: s for s in sleep_list}
-                stress_by_date = {s.calendar_date: s for s in stress_list}
-                hrv_by_date = {h.calendar_date: h for h in hrv_list}
+                # Also fetch sleep data for sleep scores
+                sleep_data_list = DailySleepData.list(end=end_date.date(), days=num_days)
+                logger.info(f"Fetched {len(sleep_data_list)} sleep data records")
 
-                # Iterate through each day and combine metrics
-                current_date = start_date
-                while current_date <= end_date:
-                    date_obj = current_date.date()
+                # Create lookup dictionary for sleep data by date
+                sleep_by_date = {}
+                for sleep_data in sleep_data_list:
+                    if hasattr(sleep_data, 'daily_sleep_dto') and sleep_data.daily_sleep_dto:
+                        dto = sleep_data.daily_sleep_dto
+                        if hasattr(dto, 'calendar_date'):
+                            sleep_by_date[dto.calendar_date] = sleep_data
 
-                    # Get metrics for this date
-                    steps = steps_by_date.get(date_obj)
-                    sleep_data = sleep_by_date.get(date_obj)
-                    stress_data = stress_by_date.get(date_obj)
-                    hrv_data = hrv_by_date.get(date_obj)
-
-                    # Normalize the data
+                # Normalize each summary
+                for summary in summaries:
                     try:
-                        normalized = self._normalize_daily_metrics(date_obj, steps, sleep_data, stress_data, hrv_data)
-                        if normalized:
-                            daily_metrics.append(normalized)
+                        # Only include dates within our range
+                        if start_date.date() <= summary.calendar_date <= end_date.date():
+                            # Get corresponding sleep data
+                            sleep_data = sleep_by_date.get(summary.calendar_date)
+                            normalized = self._normalize_daily_metrics(summary, sleep_data)
+                            if normalized:
+                                daily_metrics.append(normalized)
                     except Exception as e:
-                        logger.warning(f"Could not normalize metrics for {date_obj}: {e}")
-
-                    current_date += timedelta(days=1)
+                        logger.warning(f"Could not normalize metrics for {summary.calendar_date}: {e}")
 
             except Exception as e:
-                logger.error(f"Error fetching daily metrics in bulk: {e}")
+                logger.error(f"Error fetching daily metrics: {e}")
 
             logger.info(f"Found {len(daily_metrics)} days of metrics")
             return daily_metrics
@@ -307,43 +309,82 @@ class GarminSync:
             logger.error(f"Error fetching daily metrics: {e}")
             return []
 
-    def _normalize_daily_metrics(
-        self, date_obj: date, steps_data, sleep_data, stress_data, hrv_data
-    ) -> Optional[Dict[str, Any]]:
-        """Normalize daily metrics data from garth objects."""
+    def _normalize_daily_metrics(self, summary: DailySummary, sleep_data: Optional[DailySleepData] = None) -> Optional[Dict[str, Any]]:
+        """Normalize daily metrics data from DailySummary object."""
         try:
-            date_str = date_obj.isoformat()
+            date_str = summary.calendar_date.isoformat()
             metrics = {
                 "date": date_str,
                 "external_id": f"daily_{date_str}",
             }
 
             # Steps
-            if steps_data:
-                metrics["steps"] = steps_data.total_steps
-                metrics["distance_meters"] = steps_data.total_distance
-                # Note: active_calories not available in DailySteps, may need separate query
+            if summary.total_steps:
+                metrics["steps"] = summary.total_steps
 
-            # Sleep
-            if sleep_data:
-                if hasattr(sleep_data, 'sleep_time_seconds'):
-                    metrics["sleep_hours"] = round(sleep_data.sleep_time_seconds / 3600, 1)
-                elif hasattr(sleep_data, 'total_sleep_seconds'):
-                    metrics["sleep_hours"] = round(sleep_data.total_sleep_seconds / 3600, 1)
+            # Distance
+            if summary.total_distance_meters:
+                if self.unit_system == "imperial":
+                    metrics["distance"] = round(convert_meters_to_miles(summary.total_distance_meters), 2)
+                else:
+                    metrics["distance"] = round(summary.total_distance_meters / 1000, 2)  # km
+
+            # Calories
+            if summary.active_kilocalories:
+                metrics["active_calories"] = summary.active_kilocalories
+            if summary.total_kilocalories:
+                metrics["total_calories"] = summary.total_kilocalories
+
+            # Floors
+            if summary.floors_ascended:
+                metrics["floors_climbed"] = round(summary.floors_ascended, 1)
+
+            # Heart Rate
+            if summary.resting_heart_rate:
+                metrics["avg_hr"] = summary.resting_heart_rate
+            if summary.min_heart_rate:
+                metrics["min_hr"] = summary.min_heart_rate
+            if summary.max_heart_rate:
+                metrics["max_hr"] = summary.max_heart_rate
 
             # Stress
-            if stress_data and hasattr(stress_data, 'avg_stress_level'):
-                metrics["avg_stress"] = stress_data.avg_stress_level
+            if summary.average_stress_level:
+                metrics["avg_stress"] = summary.average_stress_level
 
-            # HRV / Heart Rate
-            if hrv_data:
-                if hasattr(hrv_data, 'last_night_avg'):
-                    metrics["hrv_avg"] = hrv_data.last_night_avg
+            # Body Battery
+            if summary.body_battery_highest_value:
+                metrics["body_battery_max"] = summary.body_battery_highest_value
+
+            # Sleep
+            if summary.sleeping_seconds:
+                metrics["sleep_hours"] = round(summary.sleeping_seconds / 3600, 1)
+
+            # Intensity Minutes
+            if hasattr(summary, 'moderate_intensity_minutes') and summary.moderate_intensity_minutes is not None:
+                metrics["moderate_intensity_minutes"] = summary.moderate_intensity_minutes
+            if hasattr(summary, 'vigorous_intensity_minutes') and summary.vigorous_intensity_minutes is not None:
+                metrics["vigorous_intensity_minutes"] = summary.vigorous_intensity_minutes
+
+            # Sleep Score (from DailySleepData)
+            if sleep_data and hasattr(sleep_data, 'daily_sleep_dto') and sleep_data.daily_sleep_dto:
+                dto = sleep_data.daily_sleep_dto
+                if hasattr(dto, 'sleep_scores') and dto.sleep_scores:
+                    scores = dto.sleep_scores
+                    if hasattr(scores, 'overall') and scores.overall and scores.overall.value:
+                        metrics["sleep_score"] = scores.overall.value
+
+            # VO2 Max - try to get from last_seven_days_avg_resting_heart_rate as proxy
+            # Note: Real VO2 Max would need FitnessActivity data which requires activity-specific calls
+            if hasattr(summary, 'last_seven_days_avg_resting_heart_rate') and summary.last_seven_days_avg_resting_heart_rate:
+                # VO2 Max estimation formula (rough approximation for reference)
+                # Real VO2 Max comes from running/cycling activities with HR data
+                # For now, we'll leave this empty and note it needs activity-based calculation
+                pass
 
             return metrics
 
         except Exception as e:
-            logger.error(f"Error normalizing daily metrics for {date_obj}: {e}")
+            logger.error(f"Error normalizing daily metrics for {summary.calendar_date}: {e}")
             return None
 
     @retry_api_call

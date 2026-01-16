@@ -115,10 +115,8 @@ def sync_daily_metrics(garmin: GarminSync, notion: NotionSync, state: StateManag
     stats = {"fetched": 0, "created": 0, "updated": 0, "errors": 0}
 
     try:
-        # Fetch daily metrics (last 30 days)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
-        daily_metrics = garmin.get_daily_metrics(start_date, end_date)
+        # Fetch daily metrics (uses SYNC_LOOKBACK_DAYS from config, defaults to 90 days)
+        daily_metrics = garmin.get_daily_metrics()
         stats["fetched"] = len(daily_metrics)
 
         if not daily_metrics:

@@ -95,9 +95,9 @@ class NotionSync:
     def _build_workout_properties(self, workout_data: Dict[str, Any]) -> Dict[str, Any]:
         """Build Notion properties for a workout."""
         properties = {
-            "Title": {"title": [{"text": {"content": workout_data.get("title", "Workout")}}]},
+            "Name": {"title": [{"text": {"content": workout_data.get("title", "Workout")}}]},
             "External ID": {"rich_text": [{"text": {"content": workout_data.get("external_id", "")}}]},
-            "Last Synced": {"date": {"start": datetime.now().isoformat()}},
+            "Synced At": {"date": {"start": datetime.now().isoformat()}},
         }
 
         # Date
@@ -136,25 +136,42 @@ class NotionSync:
         if workout_data.get("pace"):
             properties["Avg Pace"] = {"rich_text": [{"text": {"content": workout_data["pace"]}}]}
 
+        # Speed
+        if workout_data.get("speed"):
+            properties["Avg Speed"] = {"number": workout_data["speed"]}
+
         # Garmin URL
         if workout_data.get("garmin_url"):
             properties["Garmin URL"] = {"url": workout_data["garmin_url"]}
 
         return properties
 
-    def _map_activity_type(self, garmin_type: str) -> str:
+    def _map_activity_type(self, garmin_type) -> str:
         """Map Garmin activity type to Notion select option."""
+        # Extract type_key from ActivityType object if it has one
+        if hasattr(garmin_type, 'type_key'):
+            type_key = garmin_type.type_key.upper()
+        else:
+            type_key = str(garmin_type).upper()
+
         mapping = {
             "RUNNING": "Run",
+            "TRAIL_RUNNING": "Run",
             "CYCLING": "Ride",
+            "ROAD_BIKING": "Ride",
+            "MOUNTAIN_BIKING": "Ride",
+            "VIRTUAL_RIDE": "Ride",
+            "INDOOR_CYCLING": "Ride",
             "SWIMMING": "Swim",
+            "LAP_SWIMMING": "Swim",
+            "OPEN_WATER_SWIMMING": "Swim",
             "STRENGTH_TRAINING": "Strength",
+            "CARDIO_TRAINING": "Strength",
             "WALKING": "Walk",
             "HIKING": "Walk",
             "YOGA": "Other",
-            "CARDIO": "Other",
         }
-        return mapping.get(garmin_type.upper(), "Other")
+        return mapping.get(type_key, "Other")
 
     @rate_limit(calls_per_second=3.0)
     def create_daily_metric(self, metric_data: Dict[str, Any]) -> Optional[str]:
@@ -211,30 +228,64 @@ class NotionSync:
         date_str = metric_data.get("date", "")
 
         properties = {
-            "Date": {"title": [{"text": {"content": date_str}}]},
+            "Name": {"title": [{"text": {"content": date_str}}]},
             "External ID": {"rich_text": [{"text": {"content": metric_data.get("external_id", "")}}]},
-            "Last Synced": {"date": {"start": datetime.now().isoformat()}},
+            "Synced At": {"date": {"start": datetime.now().isoformat()}},
         }
+
+        # Add the Date property separately
+        if date_str:
+            properties["Date"] = {"date": {"start": date_str}}
 
         # Steps
         if metric_data.get("steps"):
             properties["Steps"] = {"number": metric_data["steps"]}
 
-        # Sleep
-        if metric_data.get("sleep_hours"):
-            properties["Sleep Hours"] = {"number": metric_data["sleep_hours"]}
-
-        # Heart Rate
-        if metric_data.get("resting_hr"):
-            properties["Resting Heart Rate"] = {"number": metric_data["resting_hr"]}
-
-        # Stress
-        if metric_data.get("avg_stress"):
-            properties["Avg Stress"] = {"number": metric_data["avg_stress"]}
+        # Distance
+        if metric_data.get("distance"):
+            properties["Distance"] = {"number": metric_data["distance"]}
 
         # Calories
         if metric_data.get("active_calories"):
-            properties["Active Calories"] = {"number": metric_data["active_calories"]}
+            properties["Calories Active"] = {"number": metric_data["active_calories"]}
+        if metric_data.get("total_calories"):
+            properties["Calories Total"] = {"number": metric_data["total_calories"]}
+
+        # Floors
+        if metric_data.get("floors_climbed"):
+            properties["Floors Climbed"] = {"number": metric_data["floors_climbed"]}
+
+        # Heart Rate
+        if metric_data.get("avg_hr"):
+            properties["Avg Heart Rate"] = {"number": metric_data["avg_hr"]}
+        if metric_data.get("min_hr"):
+            properties["Min Heart Rate"] = {"number": metric_data["min_hr"]}
+        if metric_data.get("max_hr"):
+            properties["Max Heart Rate"] = {"number": metric_data["max_hr"]}
+
+        # Stress
+        if metric_data.get("avg_stress"):
+            properties["Stress Avg"] = {"number": metric_data["avg_stress"]}
+
+        # Body Battery
+        if metric_data.get("body_battery_max"):
+            properties["Body Battery Max"] = {"number": metric_data["body_battery_max"]}
+
+        # Sleep
+        if metric_data.get("sleep_hours"):
+            properties["Sleep Duration"] = {"number": metric_data["sleep_hours"]}
+        if metric_data.get("sleep_score"):
+            properties["Sleep Score"] = {"number": metric_data["sleep_score"]}
+
+        # Intensity Minutes
+        if metric_data.get("moderate_intensity_minutes") is not None:
+            properties["Moderate Intensity Minutes"] = {"number": metric_data["moderate_intensity_minutes"]}
+        if metric_data.get("vigorous_intensity_minutes") is not None:
+            properties["Vigorous Intensity Minutes"] = {"number": metric_data["vigorous_intensity_minutes"]}
+
+        # VO2 Max
+        if metric_data.get("vo2_max"):
+            properties["VO2 Max"] = {"number": metric_data["vo2_max"]}
 
         return properties
 
@@ -293,10 +344,14 @@ class NotionSync:
         date_str = body_data.get("date", "")
 
         properties = {
-            "Date": {"title": [{"text": {"content": date_str}}]},
+            "Name": {"title": [{"text": {"content": date_str}}]},
             "External ID": {"rich_text": [{"text": {"content": body_data.get("external_id", "")}}]},
-            "Last Synced": {"date": {"start": datetime.now().isoformat()}},
+            "Synced At": {"date": {"start": datetime.now().isoformat()}},
         }
+
+        # Add the Date property separately
+        if date_str:
+            properties["Date"] = {"date": {"start": date_str}}
 
         # Weight
         if body_data.get("weight"):
