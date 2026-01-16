@@ -29,6 +29,7 @@ You need to create three databases in Notion:
 | Elevation Gain | Number | Elevation gained (in feet for imperial) |
 | Avg Pace | Text | Average pace (min/mile for imperial) |
 | Avg Speed | Number | Average speed (mph for imperial) |
+| Garmin URL | URL | Link to Garmin Connect activity |
 | External ID | Text | Garmin activity ID (for deduplication) |
 | Synced At | Date | Last sync timestamp |
 
@@ -58,7 +59,9 @@ You need to create three databases in Notion:
 | Body Battery Max | Number | Max body battery (0-100) |
 | Sleep Duration | Number | Sleep duration (hours) |
 | Sleep Score | Number | Sleep quality score (0-100) |
-| VO2 Max | Number | VO2 max estimate |
+| Moderate Intensity Minutes | Number | Moderate exercise minutes |
+| Vigorous Intensity Minutes | Number | Vigorous exercise minutes |
+| VO2 Max | Number | VO2 max estimate (optional - not currently synced) |
 | External ID | Text | Unique ID for the day (for deduplication) |
 | Synced At | Date | Last sync timestamp |
 
@@ -114,8 +117,7 @@ NOTION_BODY_METRICS_DB_ID=567890abcdef1234567890abcdef1234
 Run the health sync health check:
 
 ```bash
-cd /Users/marykate/Desktop/personal_assistant
-source venv/bin/activate
+cd personal_assistant
 python orchestrators/sync_health.py --health-check
 ```
 
@@ -145,8 +147,10 @@ python orchestrators/sync_health.py
 
 This will sync:
 - Activities from the last 90 days
-- Daily metrics from the last 30 days
+- Daily metrics from the last 90 days
 - Body composition measurements from the last 30 days
+
+**First sync takes about 5-6 minutes.** Subsequent syncs are much faster (10-15 seconds) as they only fetch new data.
 
 ## Optional: Customize Database Views
 

@@ -13,18 +13,19 @@ This system uses a modular architecture to integrate multiple data sources into 
    - Incremental sync with state management
    - Selective updates (preserves manual edits)
    - Duplicate prevention
+   - **Status**: ✅ Production Ready
 
 2. **Garmin Connect** → Notion Health Databases
-   - Workouts/activities tracking
-   - Daily health metrics (steps, sleep, heart rate, stress)
+   - Workouts/activities tracking (90 days history)
+   - Daily health metrics (steps, sleep, heart rate, stress, body battery)
+   - Sleep scores and intensity minutes
    - Body composition (weight, BMI, body fat)
    - Imperial units (miles, lbs, feet)
+   - **Status**: ✅ Production Ready
 
 ## Quick Links
 
-- [Migration Guide](MIGRATION_GUIDE.md) - How the unified structure was created
 - [Health Database Setup](HEALTH_DATABASE_SETUP.md) - Create Notion databases for Garmin sync
-- [Unified Dashboard Guide](_archive/calendar-sync/UNIFIED_DASHBOARD_GUIDE.md) - Combine calendar, tasks, and health
 
 ## Architecture
 
@@ -136,18 +137,17 @@ Is there any correlation with my sleep or training frequency?
 
 ### Prerequisites
 
-- Mac with Python 3.9+
+- Windows/Mac with Python 3.9+
 - Google account with Google Calendar
 - Garmin Connect account (for health sync)
 - Notion account with integration set up
 
 ### On-Demand Sync
 
-Navigate to the project directory and activate the virtual environment:
+Navigate to the project directory:
 
 ```bash
-cd /Users/marykate/Desktop/personal_assistant
-source venv/bin/activate
+cd personal_assistant
 ```
 
 #### Calendar Sync
@@ -188,16 +188,17 @@ python orchestrators/sync_health.py --health-check
 
 ### Automated Syncing (Optional)
 
-To run syncs automatically on a schedule, add these cron jobs:
+**Windows (Task Scheduler)**:
+- Calendar Sync: Every 5 minutes
+- Health Sync: Twice daily (7 AM, 7 PM)
 
-**Calendar Sync** - Every 5 minutes:
+**Mac/Linux (cron)**:
 ```bash
-*/5 * * * * cd /Users/marykate/Desktop/personal_assistant && venv/bin/python orchestrators/sync_calendar.py >> logs/cron_calendar.log 2>&1
-```
+# Calendar - every 5 minutes
+*/5 * * * * cd /path/to/personal_assistant && python orchestrators/sync_calendar.py >> logs/cron_calendar.log 2>&1
 
-**Health Sync** - Twice daily (7 AM, 7 PM):
-```bash
-0 7,19 * * * cd /Users/marykate/Desktop/personal_assistant && venv/bin/python orchestrators/sync_health.py >> logs/cron_health.log 2>&1
+# Health - twice daily
+0 7,19 * * * cd /path/to/personal_assistant && python orchestrators/sync_health.py >> logs/cron_health.log 2>&1
 ```
 
 ## Features
@@ -212,13 +213,15 @@ To run syncs automatically on a schedule, add these cron jobs:
 - ✅ OAuth 2.0 authentication with token caching
 
 ### Health Sync
-- ✅ Workout tracking (runs, rides, swims, strength, etc.)
-- ✅ Daily health metrics (steps, sleep, heart rate, stress, body battery)
+- ✅ Workout tracking (runs, rides, swims, strength, etc.) - 90 days
+- ✅ Daily health metrics (steps, sleep, heart rate, stress, body battery) - 90 days
+- ✅ Sleep scores and intensity minutes
 - ✅ Body composition tracking (weight, BMI, body fat %, muscle mass)
 - ✅ Imperial units (miles, lbs, feet)
 - ✅ Duplicate prevention with state management
 - ✅ Direct links to Garmin Connect activities
-- ✅ VO2 max tracking
+- ✅ Activity type mapping (Run, Ride, Swim, Walk, Strength)
+- ✅ Average speed calculations
 
 ## Performance
 
@@ -228,7 +231,7 @@ To run syncs automatically on a schedule, add these cron jobs:
 - Recommended: Every 5 minutes (automated) or on-demand
 
 **Health Sync**:
-- First sync: ~60-90 seconds (90 days workouts + 30 days metrics)
+- First sync: ~5-6 minutes (90 days of data - 42 workouts + 91 daily metrics)
 - Subsequent syncs: ~10-15 seconds (only new data)
 - Recommended: Twice daily or on-demand
 
@@ -278,16 +281,21 @@ Potential additions:
 ### Duplicate Events
 
 If you see duplicate events in Notion:
-- The `fix_duplicates.py` script can clean them up
-- Ensure state.db exists and is not corrupted
-- Check logs for "created" vs "updated" counts
+1. Clear all events from the Notion database
+2. Reset the state database:
+   ```bash
+   python fix_calendar_sync.py
+   ```
+3. Run the sync again to create fresh data
+
+The sync tracks events using External IDs and a state database to prevent duplicates.
 
 ### General Issues
 
 **Module won't run**:
-- Make sure virtual environment is activated: `source venv/bin/activate`
 - Check Python version: `python --version` (should be 3.9+)
 - Verify dependencies installed: `pip list | grep notion`
+- Install requirements if needed: `pip install -r requirements.txt`
 
 **Logs not showing**:
 - Check `logs/` directory exists
@@ -296,10 +304,17 @@ If you see duplicate events in Notion:
 
 ## Project Status
 
-- ✅ **Calendar Sync**: Production ready (tested with 362 events)
-- ⚠️ **Health Sync**: Ready (requires Notion database setup)
+- ✅ **Calendar Sync**: Production ready (362 events synced)
+- ✅ **Health Sync**: Production ready (42 workouts + 91 days of metrics synced)
 - ✅ **Unified architecture**: Complete
 - ⏳ **Future integrations**: Planned (see Future Enhancements)
+
+## Current Data
+
+- **Calendar Events**: 362 events (2 calendars, Oct 2025 - Jan 2027)
+- **Workouts**: 42 activities (90 days history)
+- **Daily Metrics**: 91 days of health data
+- **Body Metrics**: 0 measurements (no data available from Garmin)
 
 ---
 
