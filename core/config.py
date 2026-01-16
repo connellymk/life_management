@@ -40,7 +40,20 @@ class Config:
     GARMIN_EMAIL = os.getenv("GARMIN_EMAIL", "")
     GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
 
+    # Plaid
+    PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID", "")
+    PLAID_SECRET = os.getenv("PLAID_SECRET", "")
+    PLAID_ENVIRONMENT = os.getenv("PLAID_ENVIRONMENT", "sandbox")
+
+    # Financial Database IDs
+    NOTION_ACCOUNTS_DB_ID = os.getenv("NOTION_ACCOUNTS_DB_ID", "")
+    NOTION_TRANSACTIONS_DB_ID = os.getenv("NOTION_TRANSACTIONS_DB_ID", "")
+    NOTION_BALANCES_DB_ID = os.getenv("NOTION_BALANCES_DB_ID", "")
+    NOTION_INVESTMENTS_DB_ID = os.getenv("NOTION_INVESTMENTS_DB_ID", "")
+    NOTION_BILLS_DB_ID = os.getenv("NOTION_BILLS_DB_ID", "")
+
     # Sync settings
+    PLAID_TRANSACTION_DAYS = int(os.getenv("PLAID_TRANSACTION_DAYS", "30"))
     SYNC_LOOKBACK_DAYS = int(os.getenv("SYNC_LOOKBACK_DAYS", "90"))
     SYNC_LOOKAHEAD_DAYS = int(os.getenv("SYNC_LOOKAHEAD_DAYS", "365"))
     UNIT_SYSTEM = os.getenv("UNIT_SYSTEM", "imperial").lower()
@@ -50,6 +63,9 @@ class Config:
     LOG_PATH = os.getenv("LOG_PATH", "logs/sync.log")
     LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", "10485760"))
     LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "5"))
+
+    # Database
+    DATA_DB_PATH = os.getenv("DATA_DB_PATH", "data.db")
 
     # Base directory
     BASE_DIR = Path(__file__).parent.parent
@@ -110,6 +126,37 @@ class GarminConfig(Config):
             (cls.NOTION_WORKOUTS_DB_ID, "NOTION_WORKOUTS_DB_ID"),
             (cls.NOTION_DAILY_METRICS_DB_ID, "NOTION_DAILY_METRICS_DB_ID"),
             (cls.NOTION_BODY_METRICS_DB_ID, "NOTION_BODY_METRICS_DB_ID"),
+        ]:
+            if not db_id:
+                errors.append(f"{name} not set")
+
+        return len(errors) == 0, errors
+
+
+class PlaidConfig(Config):
+    """Plaid specific configuration."""
+
+    @classmethod
+    def validate(cls) -> tuple[bool, List[str]]:
+        """Validate Plaid configuration."""
+        is_valid, errors = super().validate()
+
+        if not cls.PLAID_CLIENT_ID:
+            errors.append("PLAID_CLIENT_ID not set")
+        if not cls.PLAID_SECRET:
+            errors.append("PLAID_SECRET not set")
+
+        if cls.PLAID_ENVIRONMENT not in ["sandbox", "development", "production"]:
+            errors.append(
+                f"PLAID_ENVIRONMENT must be 'sandbox', 'development', or 'production' (got '{cls.PLAID_ENVIRONMENT}')"
+            )
+
+        for db_id, name in [
+            (cls.NOTION_ACCOUNTS_DB_ID, "NOTION_ACCOUNTS_DB_ID"),
+            (cls.NOTION_TRANSACTIONS_DB_ID, "NOTION_TRANSACTIONS_DB_ID"),
+            (cls.NOTION_BALANCES_DB_ID, "NOTION_BALANCES_DB_ID"),
+            (cls.NOTION_INVESTMENTS_DB_ID, "NOTION_INVESTMENTS_DB_ID"),
+            (cls.NOTION_BILLS_DB_ID, "NOTION_BILLS_DB_ID"),
         ]:
             if not db_id:
                 errors.append(f"{name} not set")
