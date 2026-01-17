@@ -200,7 +200,7 @@ def sync_body_metrics(garmin: GarminSync, storage: HealthStorage, dry_run: bool 
 
     try:
         # Fetch body metrics (if available from Garmin)
-        body_metrics = garmin.get_body_metrics()
+        body_metrics = garmin.get_body_composition()
         stats["fetched"] = len(body_metrics)
 
         if not body_metrics:
@@ -297,11 +297,7 @@ def health_check() -> bool:
     # Check Garmin credentials
     logger.info("\n4. Checking Garmin credentials...")
     try:
-        garmin = GarminSync(
-            email=Config.GARMIN_EMAIL,
-            password=Config.GARMIN_PASSWORD,
-            unit_system=Config.UNIT_SYSTEM,
-        )
+        garmin = GarminSync()
         # Try to authenticate (will fail if credentials are wrong)
         logger.info("  + Garmin credentials configured")
 
@@ -371,11 +367,7 @@ def main():
 
     try:
         # Initialize clients
-        garmin = GarminSync(
-            email=Config.GARMIN_EMAIL,
-            password=Config.GARMIN_PASSWORD,
-            unit_system=Config.UNIT_SYSTEM,
-        )
+        garmin = GarminSync()
 
         # Determine what to sync
         sync_all = not any([args.workouts_only, args.metrics_only])

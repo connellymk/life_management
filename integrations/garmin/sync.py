@@ -52,7 +52,7 @@ class GarminSync:
                 garth.resume(str(self.tokens_dir))
                 garth.client.username = self.email
                 self._authenticated = True
-                logger.info("✓ Successfully loaded Garmin tokens")
+                logger.info("+ Successfully loaded Garmin tokens")
                 return True
         except Exception as e:
             logger.warning(f"Could not load cached tokens: {e}")
@@ -63,7 +63,7 @@ class GarminSync:
             garth.login(self.email, self.password)
             garth.save(str(self.tokens_dir))
             self._authenticated = True
-            logger.info("✓ Successfully authenticated with Garmin Connect")
+            logger.info("+ Successfully authenticated with Garmin Connect")
             return True
         except Exception as e:
             logger.error(f"✗ Garmin authentication failed: {e}")
