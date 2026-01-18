@@ -58,26 +58,25 @@ class AirtableTrainingSessionsSync:
             'Notes': 'Felt great today!'
         }
         """
-        # Convert start time to Day and Week IDs
+        # Convert start time to Day ID
         start_time = session_data.get('Start Time')
         if isinstance(start_time, str):
             start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
 
         day_value = date_to_day_id(start_time)
-        week_value = date_to_week_id(start_time)
 
-        # Look up actual Airtable record IDs for Day and Week
+        # Look up actual Airtable record ID for Day
         day_record_id = self.client.get_day_record_id(day_value)
-        week_record_id = self.client.get_week_record_id(week_value)
 
         # Build Airtable record
+        activity_name = session_data.get('Activity Name')
         record = {
+            'Name': activity_name,  # Use Activity Name as Name field
             'Activity ID': str(session_data.get('Activity ID')),
-            'Activity Name': session_data.get('Activity Name'),
             'Activity Type': session_data.get('Activity Type'),
             'Day': [day_record_id],  # Link to Day table using actual record ID
-            'Week': [week_record_id],  # Link to Week table using actual record ID
             'Start Time': format_airtable_datetime(start_time),
+            'Source': 'Garmin',  # Set source to Garmin
         }
 
         # Add optional numeric fields (using actual Airtable field names)
@@ -105,10 +104,33 @@ class AirtableTrainingSessionsSync:
         if session_data.get('Garmin URL'):
             record['Garmin URL'] = session_data.get('Garmin URL')
 
+        # Add detailed metrics from activity summary
+        if session_data.get('Aerobic Training Effect') is not None:
+            record['Aerobic Training Effect'] = session_data.get('Aerobic Training Effect')
+            # Also populate old Training Effect field with aerobic TE for backward compatibility
+            record['Training Effect'] = session_data.get('Aerobic Training Effect')
+        elif session_data.get('Training Effect') is not None:
+            # Fallback to old Training Effect field if provided
+            record['Training Effect'] = session_data.get('Training Effect')
+        if session_data.get('Anaerobic Training Effect') is not None:
+            record['Anaerobic Training Effect'] = session_data.get('Anaerobic Training Effect')
+        if session_data.get('Activity Training Load') is not None:
+            record['Activity Training Load'] = session_data.get('Activity Training Load')
+        if session_data.get('Avg Grade Adjusted Speed') is not None:
+            record['Avg Grade Adjusted Speed (mph)'] = session_data.get('Avg Grade Adjusted Speed')
+        if session_data.get('Avg Moving Speed') is not None:
+            record['Avg Moving Speed (mph)'] = session_data.get('Avg Moving Speed')
+        if session_data.get('Avg Temperature') is not None:
+            record['Avg Temperature (F)'] = session_data.get('Avg Temperature')
+        if session_data.get('Body Battery Change') is not None:
+            record['Body Battery Change'] = session_data.get('Body Battery Change')
+        if session_data.get('Moving Duration') is not None:
+            record['Moving Duration (min)'] = session_data.get('Moving Duration')
+
         if session_data.get('Notes'):
             record['Notes'] = session_data.get('Notes')
 
-        logger.info(f"Creating session '{record['Activity Name']}' for {day_value}")
+        logger.info(f"Creating session '{activity_name}' for {day_value}")
         created = self.table.create(record)
         return created
 
@@ -126,30 +148,30 @@ class AirtableTrainingSessionsSync:
         # Build update record with field name mapping
         record = {}
 
-        # Convert start time to Day/Week IDs if provided
+        # Convert start time to Day ID if provided
         if 'Start Time' in session_data:
             start_time = session_data['Start Time']
             if isinstance(start_time, str):
                 start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
 
             day_value = date_to_day_id(start_time)
-            week_value = date_to_week_id(start_time)
 
-            # Look up actual Airtable record IDs
+            # Look up actual Airtable record ID for Day
             day_record_id = self.client.get_day_record_id(day_value)
-            week_record_id = self.client.get_week_record_id(week_value)
 
             record['Day'] = [day_record_id]
-            record['Week'] = [week_record_id]
             record['Start Time'] = format_airtable_datetime(start_time)
 
         # Add basic fields
         if session_data.get('Activity ID'):
             record['Activity ID'] = str(session_data.get('Activity ID'))
         if session_data.get('Activity Name'):
-            record['Activity Name'] = session_data.get('Activity Name')
+            record['Name'] = session_data.get('Activity Name')  # Use Activity Name as Name field
         if session_data.get('Activity Type'):
             record['Activity Type'] = session_data.get('Activity Type')
+
+        # Set source to Garmin
+        record['Source'] = 'Garmin'
 
         # Add optional numeric fields (using actual Airtable field names)
         if session_data.get('Duration') is not None:
@@ -175,6 +197,29 @@ class AirtableTrainingSessionsSync:
 
         if session_data.get('Garmin URL'):
             record['Garmin URL'] = session_data.get('Garmin URL')
+
+        # Add detailed metrics from activity summary
+        if session_data.get('Aerobic Training Effect') is not None:
+            record['Aerobic Training Effect'] = session_data.get('Aerobic Training Effect')
+            # Also populate old Training Effect field with aerobic TE for backward compatibility
+            record['Training Effect'] = session_data.get('Aerobic Training Effect')
+        elif session_data.get('Training Effect') is not None:
+            # Fallback to old Training Effect field if provided
+            record['Training Effect'] = session_data.get('Training Effect')
+        if session_data.get('Anaerobic Training Effect') is not None:
+            record['Anaerobic Training Effect'] = session_data.get('Anaerobic Training Effect')
+        if session_data.get('Activity Training Load') is not None:
+            record['Activity Training Load'] = session_data.get('Activity Training Load')
+        if session_data.get('Avg Grade Adjusted Speed') is not None:
+            record['Avg Grade Adjusted Speed (mph)'] = session_data.get('Avg Grade Adjusted Speed')
+        if session_data.get('Avg Moving Speed') is not None:
+            record['Avg Moving Speed (mph)'] = session_data.get('Avg Moving Speed')
+        if session_data.get('Avg Temperature') is not None:
+            record['Avg Temperature (F)'] = session_data.get('Avg Temperature')
+        if session_data.get('Body Battery Change') is not None:
+            record['Body Battery Change'] = session_data.get('Body Battery Change')
+        if session_data.get('Moving Duration') is not None:
+            record['Moving Duration (min)'] = session_data.get('Moving Duration')
 
         if session_data.get('Notes'):
             record['Notes'] = session_data.get('Notes')

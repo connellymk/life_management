@@ -103,6 +103,24 @@ def sync_workouts(garmin: GarminSync, airtable_sync: AirtableTrainingSessionsSyn
                 if activity.get('speed'):
                     session_data['Average Speed'] = activity.get('speed')
 
+                # Add detailed metrics from activity summary
+                if activity.get('aerobic_training_effect') is not None:
+                    session_data['Aerobic Training Effect'] = activity.get('aerobic_training_effect')
+                if activity.get('anaerobic_training_effect') is not None:
+                    session_data['Anaerobic Training Effect'] = activity.get('anaerobic_training_effect')
+                if activity.get('activity_training_load') is not None:
+                    session_data['Activity Training Load'] = activity.get('activity_training_load')
+                if activity.get('avg_grade_adjusted_speed') is not None:
+                    session_data['Avg Grade Adjusted Speed'] = activity.get('avg_grade_adjusted_speed')
+                if activity.get('avg_moving_speed') is not None:
+                    session_data['Avg Moving Speed'] = activity.get('avg_moving_speed')
+                if activity.get('avg_temperature') is not None:
+                    session_data['Avg Temperature'] = activity.get('avg_temperature')
+                if activity.get('body_battery_change') is not None:
+                    session_data['Body Battery Change'] = activity.get('body_battery_change')
+                if activity.get('moving_duration_minutes') is not None:
+                    session_data['Moving Duration'] = activity.get('moving_duration_minutes')
+
                 # Sync to Airtable (create or update)
                 result = airtable_sync.sync_session(session_data)
 

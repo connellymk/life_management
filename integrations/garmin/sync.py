@@ -131,10 +131,11 @@ class GarminSync:
 
             logger.info(f"Found {len(all_activities)} activities")
 
-            # Normalize activity data
+            # Normalize activity data and fetch detailed metrics
             normalized_activities = []
-            for activity in all_activities:
-                normalized = self._normalize_activity(activity)
+            for i, activity in enumerate(all_activities, 1):
+                logger.info(f"Processing activity {i}/{len(all_activities)}: {activity.activity_name}")
+                normalized = self._normalize_activity(activity, fetch_details=True)
                 if normalized:
                     normalized_activities.append(normalized)
 
@@ -144,18 +145,24 @@ class GarminSync:
             logger.error(f"Error fetching activities: {e}")
             return []
 
-    def _normalize_activity(self, activity: Activity) -> Optional[Dict[str, Any]]:
+    def _normalize_activity(self, activity: Activity, fetch_details: bool = False) -> Optional[Dict[str, Any]]:
         """
         Normalize activity data to a consistent format.
 
         Args:
             activity: Activity object from garth
+            fetch_details: If True, fetch detailed activity summary (extra API call)
 
         Returns:
             Normalized activity dictionary
         """
         try:
-            # Extract basic info from activity object (don't fetch summary to avoid rate limits)
+            # Fetch detailed activity data if requested
+            if fetch_details:
+                logger.debug(f"Fetching detailed data for activity {activity.activity_id}")
+                activity = Activity.get(activity.activity_id)
+
+            # Extract basic info from activity object
             activity_id = str(activity.activity_id) if hasattr(activity, 'activity_id') else ""
             activity_name = activity.activity_name if hasattr(activity, 'activity_name') else "Workout"
 
@@ -192,6 +199,9 @@ class GarminSync:
 
             # Date/time (start_time_local is already a datetime object)
             start_time = activity.start_time_local
+            # If start_time_local is None, try getting from summary
+            if not start_time and hasattr(activity, 'summary') and activity.summary:
+                start_time = activity.summary.start_time_local
 
             # Duration (seconds)
             duration_seconds = activity.duration or 0
@@ -244,7 +254,8 @@ class GarminSync:
             # URL
             garmin_url = f"https://connect.garmin.com/modern/activity/{activity_id}"
 
-            return {
+            # Build base result dictionary
+            result = {
                 "external_id": activity_id,
                 "title": activity_name,
                 "activity_type": activity_type,
@@ -262,6 +273,49 @@ class GarminSync:
                 "garmin_url": garmin_url,
                 "raw_data": activity,  # Keep raw data for debugging
             }
+
+            # Extract detailed metrics from summary if available
+            if hasattr(activity, 'summary') and activity.summary:
+                summary = activity.summary
+
+                # Training Effect metrics
+                if hasattr(summary, 'training_effect') and summary.training_effect:
+                    result['aerobic_training_effect'] = summary.training_effect
+                if hasattr(summary, 'anaerobic_training_effect') and summary.anaerobic_training_effect:
+                    result['anaerobic_training_effect'] = summary.anaerobic_training_effect
+                if hasattr(summary, 'activity_training_load') and summary.activity_training_load:
+                    result['activity_training_load'] = summary.activity_training_load
+
+                # Moving duration (convert to minutes)
+                if hasattr(summary, 'moving_duration') and summary.moving_duration:
+                    result['moving_duration_minutes'] = round(summary.moving_duration / 60, 1)
+
+                # Speed metrics (convert to mph/kph based on unit system)
+                if hasattr(summary, 'average_moving_speed') and summary.average_moving_speed:
+                    if self.unit_system == "imperial":
+                        result['avg_moving_speed'] = round(summary.average_moving_speed * 2.23694, 2)
+                    else:
+                        result['avg_moving_speed'] = round(summary.average_moving_speed * 3.6, 2)
+
+                if hasattr(summary, 'avg_grade_adjusted_speed') and summary.avg_grade_adjusted_speed:
+                    if self.unit_system == "imperial":
+                        result['avg_grade_adjusted_speed'] = round(summary.avg_grade_adjusted_speed * 2.23694, 2)
+                    else:
+                        result['avg_grade_adjusted_speed'] = round(summary.avg_grade_adjusted_speed * 3.6, 2)
+
+                # Temperature (convert to F if imperial)
+                if hasattr(summary, 'average_temperature') and summary.average_temperature is not None:
+                    if self.unit_system == "imperial":
+                        # Convert Celsius to Fahrenheit
+                        result['avg_temperature'] = round((summary.average_temperature * 9/5) + 32, 1)
+                    else:
+                        result['avg_temperature'] = round(summary.average_temperature, 1)
+
+                # Body Battery change
+                if hasattr(summary, 'difference_body_battery') and summary.difference_body_battery is not None:
+                    result['body_battery_change'] = int(summary.difference_body_battery)
+
+            return result
 
         except Exception as e:
             logger.error(f"Error normalizing activity {activity.get('activityId')}: {e}")
