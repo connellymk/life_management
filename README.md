@@ -39,9 +39,12 @@ This gives you the best of both worlds: powerful visual interfaces with rollups 
 
 ## Quick Links
 
+- **[Quick Start Guide](QUICK_START.md)** - Get started in 5 minutes with step-by-step commands
 - [Airtable Structure Plan](airtable_structure_plan.md) - Complete Airtable base structure and schema
 - [Airtable Setup Guide](AIRTABLE_SETUP.md) - Personal Access Token setup and authentication
 - [Airtable Setup Complete](AIRTABLE_SETUP_COMPLETE.md) - Current setup status and next steps
+- [Architecture](ARCHITECTURE.md) - Comprehensive system architecture documentation
+- [Migration Notes](MIGRATION_NOTES.md) - Current migration status from Notion to Airtable
 - [Financial Security Plan](FINANCIAL_SECURITY_PLAN.md) - Security architecture for financial data
 
 ## Architecture
