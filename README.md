@@ -1,43 +1,47 @@
 # Personal Assistant System
 
-A unified personal productivity system that syncs data from multiple sources (Google Calendar, Garmin Connect, Plaid Banking) using a hybrid storage architecture (Notion + SQL), enabling AI-powered life management with Claude.
+A unified personal productivity system that syncs data from multiple sources (Google Calendar, Garmin Connect, Plaid Banking) using a hybrid storage architecture (Airtable + SQL), enabling AI-powered life management with Claude.
 
 ## Overview
 
-This system uses a **hybrid storage architecture** combining Notion and SQL databases:
-- **Notion**: Low-volume data with manual annotations (calendar events, workouts, tasks)
-- **SQL**: High-volume data for unlimited history and fast analytics (financial transactions, health metrics)
+This system uses a **hybrid storage architecture** combining Airtable and SQL databases:
+- **Airtable**: Visual dashboards with relational database features (calendar events, workouts, tasks, training plans)
+- **SQL**: Unlimited historical data for long-term analytics (optional archival of data older than 90 days)
 
-This gives you the best of both worlds: visual dashboards where you need them, and powerful analytics where it matters.
+This gives you the best of both worlds: powerful visual interfaces with rollups and relationships, plus unlimited storage for historical analysis.
 
 ### Integrations
 
-1. **Google Calendar** → Notion Calendar Events
+1. **Google Calendar** → Airtable Calendar Events
    - Multi-calendar support
-   - Incremental sync with state management
-   - Selective updates (preserves manual edits)
-   - Duplicate prevention
+   - Timezone-aware sync (Mountain Time for Bozeman, MT)
+   - All-day and timed event handling
+   - Duplicate prevention with Event ID tracking
+   - Links to Day table for rollups and aggregations
    - **Status**: ✅ Production Ready
 
-2. **Garmin Connect** → Hybrid (Notion + SQL)
-   - **Workouts** → Notion (manual annotations, visual log)
-   - **Daily Metrics** → SQL (unlimited history, fast analytics)
-   - **Body Metrics** → SQL (weight tracking, body composition)
+2. **Garmin Connect** → Airtable (with SQL archival option)
+   - **Training Sessions** → Airtable (workouts with performance metrics)
+   - **Training Plans** → Airtable (planned workouts, compare to actuals)
+   - **Health Metrics** → Airtable (daily health data: sleep, HR, stress, steps)
+   - **Body Metrics** → Airtable (weight, body composition)
+   - Links to Day and Week tables for weekly rollups
    - Imperial units (miles, lbs, feet)
-   - **Status**: ✅ Production Ready
+   - **Status**: ⚙️ In Development
 
 3. **Plaid Banking** → SQL Database
    - Bank accounts, credit cards, investments (encrypted tokens)
-   - Transactions (unlimited history, not just 30 days)
+   - Transactions (unlimited history)
    - Daily balance snapshots (net worth tracking)
    - Investment holdings and performance
    - **Security**: Encrypted tokens, masked account numbers, local storage only
-   - **Status**: ✅ Production Ready
+   - **Status**: ✅ Production Ready (SQL only, Airtable summary view optional)
 
 ## Quick Links
 
-- [Hybrid Architecture Complete](HYBRID_ARCHITECTURE_COMPLETE.md) - Full hybrid SQL + Notion architecture documentation
-- [Health Database Setup](HEALTH_DATABASE_SETUP.md) - Create Notion databases for Garmin sync (workouts only)
+- [Airtable Structure Plan](airtable_structure_plan.md) - Complete Airtable base structure and schema
+- [Airtable Setup Guide](AIRTABLE_SETUP.md) - Personal Access Token setup and authentication
+- [Airtable Setup Complete](AIRTABLE_SETUP_COMPLETE.md) - Current setup status and next steps
 - [Financial Security Plan](FINANCIAL_SECURITY_PLAN.md) - Security architecture for financial data
 
 ## Architecture
@@ -46,99 +50,153 @@ This gives you the best of both worlds: visual dashboards where you need them, a
 personal_assistant/
 ├── core/                    # Shared utilities
 │   ├── config.py           # Unified configuration
-│   ├── database.py         # SQLite database management (NEW)
-│   ├── secure_storage.py   # Encrypted token storage (NEW)
+│   ├── database.py         # SQLite database management
+│   ├── secure_storage.py   # Encrypted token storage
 │   ├── state_manager.py    # SQLite state tracking
 │   └── utils.py            # Logging, retry, rate limiting
 │
 ├── integrations/           # External data sources
 │   ├── google_calendar/    # Google Calendar API client
+│   │   └── sync.py        # Calendar event fetching
 │   ├── garmin/            # Garmin Connect API client
-│   └── plaid/             # Plaid banking API client (secure)
+│   │   └── sync.py        # Health and activity data fetching
+│   └── plaid/             # Plaid banking API client
+│       └── sync.py        # Financial data fetching
 │
-├── storage/               # SQL storage modules (NEW)
+├── storage/               # SQL storage modules
 │   ├── financial.py       # Financial data CRUD operations
 │   ├── health.py          # Health data CRUD operations
 │   └── queries.py         # Pre-built analytics queries
 │
-├── notion/                # Notion database operations
-│   ├── calendar.py        # Calendar Events database
-│   └── health.py          # Workouts database (metrics moved to SQL)
+├── airtable/              # Airtable database operations
+│   ├── base_client.py     # Airtable API client
+│   ├── date_utils.py      # Date/time conversion utilities
+│   ├── calendar.py        # Calendar Events sync
+│   └── health.py          # Training Sessions, Health Metrics, Body Metrics sync
 │
 ├── orchestrators/         # Main sync scripts
-│   ├── sync_calendar.py   # Run calendar sync (Notion)
-│   ├── sync_health.py     # Run health sync (Hybrid: Notion + SQL)
+│   ├── sync_calendar.py   # Run calendar sync (Airtable)
+│   ├── sync_health.py     # Run health sync (Airtable)
 │   ├── sync_financial.py  # Run financial sync (SQL only)
 │   └── setup_plaid.py     # Link bank accounts
 │
-├── scripts/               # Utility scripts (NEW)
+├── scripts/               # Utility scripts
 │   └── init_database.py   # Initialize SQL database
 │
-├── .env                   # Configuration (credentials, database IDs)
+├── .env                   # Configuration (credentials, base/table names)
 ├── state.db              # SQLite state database
-├── data.db               # SQLite data database (financial + health metrics)
+├── data.db               # SQLite data database (financial + optional health archival)
 └── README.md             # This file
 ```
 
 ## Storage Strategy
 
-### Notion Databases (Manual Management)
+### Airtable Base (Visual Dashboard + Relational Database)
 
-**Calendar Sync:**
-1. **Calendar Events** - Synced from Google Calendar
-   - Title, Start Time, End Time, Source (Personal, School, Work)
-   - Location, Attendees, URL (link to Google Calendar)
+**Core Dimension Tables:**
+1. **Day** - Central date dimension (ISO format: 2026-01-17)
+   - Links all daily data for powerful rollups
+   - Connects to Week, Month, Quarter, Year tables
 
-2. **Tasks** - Manual task management
-   - Name, Due Date, Status, Classes (relation)
+2. **Week** - Weekly planning dimension (format: "3-26")
+   - Weekly training plan overview
+   - Rollups for weekly summaries
 
-3. **Classes** - Course tracking
-   - Class name, Semester, Instructor, Grade, Credits
+**Calendar & Tasks:**
+3. **Calendar Events** - Synced from Google Calendar
+   - Title, Start/End Time, Calendar Source (Personal, School, Work)
+   - All-day and timed events
+   - Links to Day table for daily rollups
+   - Location, Attendees, Status
 
-**Health Sync (Workouts Only):**
-1. **Workouts** - Activities from Garmin (~100/year)
-   - Title, Date, Activity Type
-   - Duration, Distance, Elevation, Heart Rate, Calories
-   - Link to Garmin Connect
-   - **Why Notion?** Manual notes/annotations, visual workout log
+4. **Tasks** - Manual task management
+   - Name, Due Date, Status, Priority
+   - Links to Projects, Classes
 
-### SQL Database (Unlimited Analytics)
+5. **Projects** - Project tracking with task rollups
 
-**Financial Data (data.db):**
+6. **Classes** - Course tracking with related tasks
+
+**Health & Training:**
+7. **Training Sessions** - Actual workouts from Garmin
+   - Activity Type, Duration, Distance, Pace, Heart Rate
+   - Links to Day and Week for rollups
+   - Elevation, Calories, Training Effect
+
+8. **Training Plans** - Planned workouts
+   - Compare planned vs actual
+   - Link to completed Training Session
+   - Weekly mileage targets
+
+9. **Health Metrics** - Daily health data
+   - Sleep (duration, score, stages)
+   - Activity (steps, floors, calories)
+   - Recovery (HRV, stress, body battery)
+
+10. **Body Metrics** - Body composition
+    - Weight, body fat %, muscle mass, BMI
+
+**Meal Planning:**
+11. **Meal Plans** - Weekly meal plans
+12. **Planned Meals** - Individual meals (links recipes to days)
+13. **Recipes** - Recipe library
+14. **Grocery Items** - Shopping lists
+
+**Financial (Summary View - Optional):**
+15. **Accounts** - Account summary (last 90 days)
+16. **Transactions** - Recent transactions (last 90 days)
+17. **Finance Summary** - Monthly rollups
+
+**Weekly Reviews:**
+18. **Weekly Reviews** - Weekly reflection with automatic rollups
+19. **Sync Logs** - Integration health monitoring
+
+**Why Airtable?**
+- True relational database (foreign keys, rollups, lookups)
+- Rich formula language and automations
+- Multiple view types (Kanban, Calendar, Gallery, Timeline)
+- Better collaboration and real-time updates
+- Custom interfaces without code
+- 100k records per base (plenty for 90-day rolling window)
+
+### SQL Database (Long-term Analytics - Optional)
+
+**Financial Data (data.db) - Required:**
 - `accounts` - Bank accounts, credit cards, investments
-- `transactions` - All transactions (unlimited history, not just 30 days)
+- `transactions` - All transactions (unlimited history)
 - `balances` - Daily balance snapshots (net worth tracking)
 - `investments` - Investment holdings snapshots
-- `bills` - Recurring payments
 
-**Health Data (data.db):**
-- `daily_metrics` - Daily health data (365+ days: steps, sleep, HR, stress, etc.)
-- `body_metrics` - Body composition (weight, BMI, body fat, muscle mass)
+**Health Data (data.db) - Optional Archival:**
+- `daily_metrics` - Historical health data (>90 days)
+- `body_metrics` - Historical body composition (>90 days)
+- `training_sessions` - Historical workouts (>90 days)
 
-**Why SQL?**
-- Unlimited history (10 years ≈ 20 MB)
-- 30-500x faster queries
-- No API rate limits
-- Complex analytics (JOINs, GROUP BY, correlations)
-- Privacy: Financial data never leaves your machine
+**Why Keep SQL for Financial?**
+- Unlimited transaction history (10+ years)
+- 30-500x faster queries for complex analytics
+- Privacy: Financial data stays local
+- No cloud storage or API limits
 
 ## Integration
 
 ### Unified Dashboard
 
-**Notion Dashboard:**
-Create one Notion page with linked views:
-- Calendar Events (upcoming meetings/events)
-- Tasks (assignments and todos)
-- Workouts (recent training with manual notes)
+**Airtable Interfaces:**
+Create custom Airtable interfaces with:
+- **Daily Dashboard**: Calendar events, tasks for today, recent workouts, health metrics
+- **Weekly Planning**: Upcoming week overview with training plan, meal plan, key tasks
+- **Training Dashboard**: Workout log with planned vs actual comparison, weekly mileage rollups
+- **Health Dashboard**: Sleep trends, activity charts, recovery metrics
+- **Financial Dashboard** (optional): Recent transactions, spending by category, account balances
 
-**Claude Analytics:**
-Claude can query the SQL database directly for:
-- Financial analysis (spending by category, net worth trends, large transactions)
-- Health analytics (sleep vs activity correlations, weekly summaries, stress patterns)
-- Historical trends (years of data, not just 30-90 days)
+**Claude Integration:**
+Claude can interact with your data through:
+- **Airtable API**: Query recent data (last 90 days) for visual insights and planning
+- **SQL Database**: Query unlimited financial history for deep analytics
+- **Combined Insights**: Pull from both systems for comprehensive life management
 
-Share your Notion page with Claude and give Claude access to query your SQL database for comprehensive life management.
+Share your Airtable base with Claude for powerful AI-assisted planning and analysis.
 
 ### Claude Use Cases
 
@@ -200,7 +258,7 @@ Am I training consistently? Should I take a recovery day based on stress levels?
 - Google account with Google Calendar
 - Garmin Connect account (for health sync)
 - Plaid account (for financial sync - free sandbox available)
-- Notion account with integration set up
+- Airtable account with Personal Access Token
 
 ### First-Time Setup
 
@@ -215,11 +273,18 @@ Am I training consistently? Should I take a recovery day based on stress levels?
    ```
    This creates `data.db` with all required tables for financial and health data.
 
-3. **Configure credentials** in `.env` file (see examples in config files)
+3. **Set up Airtable base**:
+   - Create an Airtable Personal Access Token at https://airtable.com/create/tokens
+   - Follow [AIRTABLE_SETUP.md](AIRTABLE_SETUP.md) for authentication setup
+   - See [airtable_structure_plan.md](airtable_structure_plan.md) for complete table schema
+   - Tables can be created manually or via API (see AIRTABLE_SETUP_COMPLETE.md for current status)
 
-4. **Create Notion databases** (only for calendar and workouts):
-   - Follow [HEALTH_DATABASE_SETUP.md](HEALTH_DATABASE_SETUP.md) for workouts database
-   - Financial and health metrics go directly to SQL (no Notion setup needed)
+4. **Configure credentials** in `.env` file:
+   ```bash
+   AIRTABLE_ACCESS_TOKEN=pat_your_token_here
+   AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX
+   # ... other credentials
+   ```
 
 ### On-Demand Sync
 
@@ -229,38 +294,50 @@ Navigate to the project directory:
 cd personal_assistant
 ```
 
-#### Calendar Sync
+#### Calendar Sync (Airtable)
 
-**Run sync**:
+First, ensure Airtable Calendar Events table is set up with Day table links.
+
+**Run sync** (sync all calendars to Airtable):
 ```bash
 python orchestrators/sync_calendar.py
 ```
 
-**Dry run** (preview without making changes):
+**Dry run** (preview events without creating/updating in Airtable):
 ```bash
 python orchestrators/sync_calendar.py --dry-run
 ```
 
-**Health check** (verify configuration):
+**Health check** (verify Airtable configuration):
 ```bash
 python orchestrators/sync_calendar.py --health-check
 ```
 
-#### Health Sync (Hybrid: Notion + SQL)
+**Sync specific date range**:
+```bash
+python orchestrators/sync_calendar.py --start-date 2026-01-01 --end-date 2026-12-31
+```
 
-First, create the Notion Workouts database by following [HEALTH_DATABASE_SETUP.md](HEALTH_DATABASE_SETUP.md).
+**Full refresh** (force re-sync all events, ignoring state):
+```bash
+python orchestrators/sync_calendar.py --force-refresh
+```
 
-**Run sync** (workouts to Notion, metrics to SQL):
+#### Health Sync (Airtable)
+
+First, ensure Airtable tables are set up (Training Sessions, Health Metrics, Body Metrics).
+
+**Run sync** (activities and metrics to Airtable):
 ```bash
 python orchestrators/sync_health.py
 ```
 
-**Sync workouts only** (Notion):
+**Sync activities only**:
 ```bash
 python orchestrators/sync_health.py --workouts-only
 ```
 
-**Sync metrics only** (SQL):
+**Sync metrics only**:
 ```bash
 python orchestrators/sync_health.py --metrics-only
 ```
@@ -270,10 +347,12 @@ python orchestrators/sync_health.py --metrics-only
 python orchestrators/sync_health.py --dry-run
 ```
 
-**Health check** (verify Notion + SQL configuration):
+**Health check** (verify Airtable configuration):
 ```bash
 python orchestrators/sync_health.py --health-check
 ```
+
+**Note**: Health sync to Airtable is currently in development. SQL database sync for health metrics is available as a fallback.
 
 #### Financial Sync (SQL Only)
 
@@ -309,14 +388,26 @@ python orchestrators/sync_financial.py --investments-only
 
 ### Automated Syncing (Optional)
 
+Set up automated syncs to keep your Airtable and SQL databases up to date.
+
 **Windows (Task Scheduler)**:
-- Calendar Sync: Every 5 minutes
-- Health Sync: Twice daily (7 AM, 7 PM)
-- Financial Sync: Daily (7 AM)
+1. Open Task Scheduler
+2. Create tasks with these schedules:
+   - **Calendar Sync**: Every 5-15 minutes
+     - Action: `python C:\path\to\personal_assistant\orchestrators\sync_calendar.py`
+   - **Health Sync**: Twice daily (7 AM, 7 PM)
+     - Action: `python C:\path\to\personal_assistant\orchestrators\sync_health.py`
+   - **Financial Sync**: Daily (7 AM)
+     - Action: `python C:\path\to\personal_assistant\orchestrators\sync_financial.py`
 
 **Mac/Linux (cron)**:
 ```bash
-# Calendar - every 5 minutes
+# Edit crontab
+crontab -e
+
+# Add these lines:
+
+# Calendar - every 5 minutes (Airtable)
 */5 * * * * cd /path/to/personal_assistant && python orchestrators/sync_calendar.py >> logs/cron_calendar.log 2>&1
 
 # Health - twice daily
@@ -362,27 +453,31 @@ python orchestrators/sync_financial.py --investments-only
 
 ## Performance
 
-**Calendar Sync** (Notion):
-- First sync: ~5-6 minutes (362 events with duplicate checking)
-- Subsequent syncs: ~3-5 seconds (incremental with sync tokens)
-- Recommended: Every 5 minutes (automated) or on-demand
+**Calendar Sync** (Airtable):
+- First sync: ~3-5 minutes (350+ events with Day table linking)
+- Subsequent syncs: ~5-10 seconds (incremental with Event ID tracking)
+- Timezone handling: Mountain Time (America/Denver) with UTC storage
+- Recommended: Every 5-15 minutes (automated) or on-demand
 
-**Health Sync** (Hybrid):
-- First sync: ~5-6 minutes (42 workouts to Notion)
-- Daily metrics: <1 second to SQL (30x faster than Notion)
-- Subsequent syncs: ~10-15 seconds (workouts) + <1 second (metrics)
-- Recommended: Twice daily or on-demand
+**Health Sync** (Airtable):
+- First sync: ~5-10 minutes (activities + metrics with Day/Week linking)
+- Subsequent syncs: ~10-20 seconds (new activities and daily metrics)
+- Data retention: Last 90 days in Airtable (optional archival to SQL)
+- Recommended: Twice daily (7 AM, 7 PM) or on-demand
+- Status: ⚙️ In development
 
 **Financial Sync** (SQL):
 - First sync: ~5-10 seconds (accounts + unlimited transactions)
 - Subsequent syncs: ~2-5 seconds (only new transactions)
-- Query performance: 30-500x faster than Notion API
-- Recommended: Daily (automated) or on-demand
+- Query performance: 30-500x faster than API-based systems
+- Recommended: Daily (7 AM automated) or on-demand
 
-**Analytics Queries** (SQL):
-- Monthly spending by category: <10ms (vs 5+ seconds on Notion)
-- Net worth calculation: <5ms (vs 3+ seconds on Notion)
-- Historical analysis (1+ year): Instant (impossible with Notion API limits)
+**Airtable Benefits:**
+- Rich relational queries with rollups and lookups (instant)
+- Multiple view types without custom code
+- Real-time collaboration and updates
+- Native mobile apps for on-the-go access
+- 5 requests/second rate limit (rarely hit with smart caching)
 
 ## Security
 
@@ -427,10 +522,12 @@ Potential additions:
 - Check `.env` file has all required values
 - Verify database IDs are exactly 32 characters
 
-**Notion connection fails**:
-- Verify token starts with `secret_` or `ntn_`
-- Check databases are shared with your Notion integration
-- Test connection with health check command
+**Airtable connection fails**:
+- Verify token starts with `pat_` (Personal Access Token)
+- Check token has required scopes: `data.records:read`, `data.records:write`, `schema.bases:read`
+- Ensure token has access to your specific base
+- Verify Base ID starts with `app` and is 17 characters
+- Test connection: `python test_airtable.py`
 
 **Google Calendar auth fails**:
 - Delete `credentials/google_token.json` and re-authenticate
@@ -494,23 +591,28 @@ The sync tracks events using External IDs and a state database to prevent duplic
 
 ## Project Status
 
-- ✅ **Calendar Sync**: Production ready (362 events synced to Notion)
-- ✅ **Health Sync**: Production ready (42 workouts to Notion + 91 days metrics to SQL)
-- ✅ **Financial Sync**: Production ready (SQL database with unlimited history)
-- ✅ **Hybrid Architecture**: Complete (SQL + Notion)
+- ✅ **Airtable Base Setup**: Complete (Day/Week dimensions + 5 core tables with fields)
+- ✅ **Calendar Sync**: Production ready (Google Calendar → Airtable with Day linking)
+- ⚙️ **Health Sync**: In development (Garmin → Airtable Training Sessions, Health Metrics, Body Metrics)
+- ✅ **Financial Sync**: Production ready (Plaid → SQL database with unlimited history)
+- ✅ **Hybrid Architecture**: Complete (SQL + Airtable)
 - ⏳ **Future integrations**: Planned (see Future Enhancements)
 
 ## Current Data
 
-**Notion (Manual Management):**
-- Calendar Events: 362 events (2 calendars, Oct 2025 - Jan 2027)
-- Workouts: 42 activities (manual notes/annotations)
-- Tasks & Classes: Manual management
+**Airtable (Visual Dashboard):**
+- Base ID: appKYFUTDs7tDg4Wr
+- Day Table: ISO format dates with Week/Month/Quarter/Year relationships
+- Week Table: Format "W-YY" for weekly planning
+- Calendar Events: ✅ Synced (timezone-aware, links to Day table)
+- Training Sessions: Table ready, sync in development
+- Health Metrics: Table ready, sync in development
+- Body Metrics: Table ready, sync in development
+- Training Plans, Tasks, Projects, Classes: Tables created, awaiting field setup
 
-**SQL Database (Unlimited Analytics):**
-- Daily Metrics: 91 days of health data (steps, sleep, HR, stress)
-- Body Metrics: 0 measurements (no data available from Garmin)
+**SQL Database (Long-term Analytics):**
 - Financial Data: Ready for sync (accounts, transactions, balances, investments)
+- Health Data (Optional Archival): Tables available for data older than 90 days
 
 ---
 

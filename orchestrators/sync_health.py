@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
 Health & Training Sync Orchestrator
-Syncs Garmin Connect data:
-- Workouts → Notion (manual annotations useful)
-- Daily Metrics → SQL database (high volume, analytics)
-- Body Metrics → SQL database (if available)
+Syncs Garmin Connect data to Airtable and SQL:
+
+- Training Sessions → Airtable (workouts with Day/Week links for rollups)
+- Health Metrics → Airtable (daily health data with Day links)
+- Body Metrics → Airtable (weight/composition with Day links)
+- Historical Data (>90 days) → SQL database (optional archival)
+
+Note: Currently still uses Notion code. Migration to Airtable in progress.
+See MIGRATION_NOTES.md for refactoring tasks.
 """
 
 import sys
@@ -22,31 +27,34 @@ from core.state_manager import StateManager
 from core.database import Database
 from storage.health import HealthStorage
 from integrations.garmin.sync import GarminSync
-from notion.health import NotionSync
+# TODO: Update to use Airtable instead of Notion
+# from airtable.health import AirtableTrainingSessionsSync, AirtableHealthMetricsSync, AirtableBodyMetricsSync
+from notion.health import NotionSync  # DEPRECATED: Will be replaced with Airtable sync classes
 
 logger = setup_logging("health_sync")
 
 
 def sync_workouts(garmin: GarminSync, notion: NotionSync, state: StateManager, dry_run: bool = False) -> dict:
     """
-    Sync workouts from Garmin to Notion.
+    Sync workouts from Garmin to Airtable.
 
-    Workouts stay in Notion because:
-    - Manual annotations/notes are useful
-    - Low volume (~100 activities)
-    - Visual workout log is helpful
+    TODO: Migrate to Airtable
+    - Currently syncs to Notion (deprecated)
+    - Will sync to Airtable Training Sessions table
+    - Links to Day and Week tables for rollups
+    - Enables planned vs actual workout comparison
 
     Args:
         garmin: Garmin sync client
-        notion: Notion sync client
+        notion: Sync client (currently NotionSync, will be AirtableTrainingSessionsSync)
         state: State manager
-        dry_run: If True, don't actually create/update pages
+        dry_run: If True, don't actually create/update records
 
     Returns:
         Dictionary with sync stats
     """
     logger.info("=" * 50)
-    logger.info("Syncing Workouts to Notion...")
+    logger.info("Syncing Workouts to Airtable...")  # TODO: Update when migrated
     logger.info("=" * 50)
 
     start_time = time.time()
@@ -117,23 +125,24 @@ def sync_workouts(garmin: GarminSync, notion: NotionSync, state: StateManager, d
 
 def sync_daily_metrics(garmin: GarminSync, storage: HealthStorage, dry_run: bool = False) -> dict:
     """
-    Sync daily metrics from Garmin to SQL database.
+    Sync daily metrics from Garmin to Airtable (and optionally SQL for archival).
 
-    Daily metrics go to SQL because:
-    - High volume (365+ days per year)
-    - Need historical analysis
-    - SQL queries for trends/correlations
+    TODO: Migrate to Airtable
+    - Currently saves to SQL database
+    - Will sync to Airtable Health Metrics table (last 90 days)
+    - Links to Day table for rollups and aggregations
+    - Older data (>90 days) archived to SQL for historical analysis
 
     Args:
         garmin: Garmin sync client
-        storage: Health storage client
+        storage: Health storage client (will be AirtableHealthMetricsSync)
         dry_run: If True, don't actually save data
 
     Returns:
         Dictionary with sync stats
     """
     logger.info("=" * 50)
-    logger.info("Syncing Daily Metrics to SQL...")
+    logger.info("Syncing Daily Metrics to Airtable...")  # TODO: Update when migrated
     logger.info("=" * 50)
 
     start_time = time.time()
@@ -181,11 +190,16 @@ def sync_daily_metrics(garmin: GarminSync, storage: HealthStorage, dry_run: bool
 
 def sync_body_metrics(garmin: GarminSync, storage: HealthStorage, dry_run: bool = False) -> dict:
     """
-    Sync body composition metrics from Garmin to SQL database.
+    Sync body composition metrics from Garmin to Airtable.
+
+    TODO: Migrate to Airtable
+    - Currently saves to SQL database
+    - Will sync to Airtable Body Metrics table
+    - Links to Day table for tracking weight trends over time
 
     Args:
         garmin: Garmin sync client
-        storage: Health storage client
+        storage: Health storage client (will be AirtableBodyMetricsSync)
         dry_run: If True, don't actually save data
 
     Returns:

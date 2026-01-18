@@ -1,6 +1,7 @@
 """
 Google Calendar synchronization module
-Handles authentication and syncing events from Google Calendar to Notion
+Handles authentication and fetching events from Google Calendar API
+Events are synced to Airtable via the calendar orchestrator
 """
 
 import os
@@ -393,6 +394,8 @@ class GoogleCalendarSync:
         state_manager=None,
         use_incremental: bool = True,
         dry_run: bool = False,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         Sync a Google Calendar to Notion
@@ -404,6 +407,8 @@ class GoogleCalendarSync:
             state_manager: StateManager instance for incremental sync
             use_incremental: Use incremental sync if available (much faster)
             dry_run: If True, don't actually create/update in Notion
+            start_date: Start date for event range (optional)
+            end_date: End date for event range (optional)
 
         Returns:
             Dictionary with sync statistics
@@ -435,12 +440,12 @@ class GoogleCalendarSync:
             if use_incremental and state_manager:
                 # Use incremental sync
                 events, new_sync_token = self.get_calendar_events_incremental(
-                    calendar_id, sync_token=sync_token
+                    calendar_id, sync_token=sync_token, start_date=start_date, end_date=end_date
                 )
                 stats["new_sync_token"] = new_sync_token
             else:
                 # Fall back to full sync
-                events = self.get_calendar_events(calendar_id)
+                events = self.get_calendar_events(calendar_id, start_date=start_date, end_date=end_date)
 
             stats["events_fetched"] = len(events)
 

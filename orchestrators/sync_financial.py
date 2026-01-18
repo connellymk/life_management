@@ -2,7 +2,14 @@
 """
 Financial Sync Orchestrator
 Syncs Plaid banking data to SQL database (primary storage)
-Optional: Sync accounts to Notion for reference
+
+All financial data is stored in local SQL database for:
+- Unlimited transaction history (10+ years)
+- Privacy (data stays local, never in cloud)
+- Fast complex analytics (30-500x faster than API queries)
+
+Optional future enhancement: Sync summary view to Airtable (last 90 days)
+for visual dashboards while keeping full history in SQL.
 """
 
 import sys

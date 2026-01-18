@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """
 Calendar Sync Orchestrator
-Syncs Google Calendar (and future: Microsoft Calendar) to Notion
+Syncs Google Calendar (and future: Microsoft Calendar) to Airtable
+
+Fetches events from Google Calendar API and creates/updates records in Airtable's
+Calendar Events table with links to the Day table for rollups and aggregations.
 """
 
 import sys
 import argparse
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -17,19 +21,27 @@ from core.config import GoogleCalendarConfig as Config
 from core.utils import logger, format_duration
 from core.state_manager import StateManager
 from integrations.google_calendar.sync import GoogleCalendarSync
-from notion.calendar import NotionSync
+# TODO: Update to use Airtable instead of Notion
+# from airtable.calendar import AirtableCalendarSync
+from notion.calendar import NotionSync  # DEPRECATED: Will be replaced with AirtableCalendarSync
 
 
 def sync_google_calendars(
-    notion_sync: NotionSync, state_manager: StateManager, dry_run: bool = False
+    notion_sync: NotionSync,  # TODO: Change to AirtableCalendarSync
+    state_manager: StateManager,
+    dry_run: bool = False,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
 ) -> dict:
     """
-    Sync all configured Google Calendars
+    Sync all configured Google Calendars to Airtable
 
     Args:
-        notion_sync: NotionSync instance
+        notion_sync: Sync instance (currently NotionSync, will be AirtableCalendarSync)
         state_manager: StateManager instance for incremental sync
-        dry_run: If True, don't actually create/update in Notion
+        dry_run: If True, don't actually create/update in Airtable
+        start_date: Start date for event range (optional)
+        end_date: End date for event range (optional)
 
     Returns:
         Dictionary with sync statistics
@@ -69,13 +81,17 @@ def sync_google_calendars(
         logger.info(f"\nSyncing calendar: {calendar_name} ({calendar_id})")
 
         try:
+            # TODO: This method name will change to sync_calendar_to_airtable
+            # when we complete the migration from Notion to Airtable
             stats = google_sync.sync_calendar_to_notion(
                 calendar_id=calendar_id,
                 calendar_name=calendar_name,
-                notion_sync=notion_sync,
+                notion_sync=notion_sync,  # Will be: airtable_sync
                 state_manager=state_manager,
                 use_incremental=True,
                 dry_run=dry_run,
+                start_date=start_date,
+                end_date=end_date,
             )
 
             total_stats["calendars_synced"] += 1
@@ -156,9 +172,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python orchestrators/sync_calendar.py                 # Run full sync
-  python orchestrators/sync_calendar.py --dry-run       # Preview changes
-  python orchestrators/sync_calendar.py --health-check  # Check system health
+  python orchestrators/sync_calendar.py                              # Run full sync
+  python orchestrators/sync_calendar.py --dry-run                    # Preview changes
+  python orchestrators/sync_calendar.py --health-check               # Check system health
+  python orchestrators/sync_calendar.py --start-date 2026-01-01 --end-date 2026-12-31  # Sync specific date range
 
 For more information, see README.md and MIGRATION_GUIDE.md
         """,
@@ -173,6 +190,16 @@ For more information, see README.md and MIGRATION_GUIDE.md
         "--health-check",
         action="store_true",
         help="Run health checks and exit",
+    )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        help="Start date for event range (YYYY-MM-DD format)",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        help="End date for event range (YYYY-MM-DD format)",
     )
 
     args = parser.parse_args()
@@ -198,6 +225,28 @@ For more information, see README.md and MIGRATION_GUIDE.md
         return 1
 
     logger.info("✓ Configuration valid")
+
+    # Parse date range if provided
+    start_date = None
+    end_date = None
+    if args.start_date or args.end_date:
+        try:
+            if args.start_date:
+                start_date = datetime.strptime(args.start_date, "%Y-%m-%d")
+                start_date = start_date.replace(tzinfo=timezone.utc)
+                logger.info(f"Start date: {start_date.date()}")
+            if args.end_date:
+                # Set end_date to end of day (23:59:59)
+                end_date = datetime.strptime(args.end_date, "%Y-%m-%d")
+                end_date = end_date.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                logger.info(f"End date: {end_date.date()}")
+            if start_date and end_date and start_date > end_date:
+                logger.error("Start date must be before end date")
+                return 1
+        except ValueError as e:
+            logger.error(f"Invalid date format: {e}")
+            logger.error("Dates must be in YYYY-MM-DD format (e.g., 2026-01-01)")
+            return 1
 
     # Health check mode
     if args.health_check:
@@ -256,7 +305,8 @@ For more information, see README.md and MIGRATION_GUIDE.md
     try:
         # Sync Google Calendars
         stats = sync_google_calendars(
-            notion_sync, state_manager, dry_run=args.dry_run
+            notion_sync, state_manager, dry_run=args.dry_run,
+            start_date=start_date, end_date=end_date
         )
         if not stats.get("success", True):
             overall_success = False
