@@ -528,6 +528,271 @@ class GoogleCalendarSync:
 
         return stats
 
+    def transform_event_to_airtable(
+        self, event: Dict[str, Any], source_name: str
+    ) -> Dict[str, Any]:
+        """
+        Transform a Google Calendar event into Airtable event data
+
+        Args:
+            event: Google Calendar event dictionary
+            source_name: Name of the calendar source (e.g., 'Personal')
+
+        Returns:
+            Dictionary of Airtable event fields
+        """
+        from datetime import datetime as dt, timedelta
+        import pytz
+
+        # Mountain Time timezone
+        mountain_tz = pytz.timezone('America/Denver')
+        utc = pytz.UTC
+
+        # Extract event ID
+        event_id = event.get("id", "")
+
+        # Extract title
+        title = event.get("summary", "(No title)")
+
+        # Extract dates/times
+        start = event.get("start", {})
+        end = event.get("end", {})
+
+        # Handle both date and dateTime formats
+        start_dt_str = start.get("dateTime") or start.get("date")
+        end_dt_str = end.get("dateTime") or end.get("date")
+
+        # Determine if this is an all-day event
+        is_all_day = "date" in start and "dateTime" not in start
+
+        # Parse start time
+        if is_all_day:
+            # All-day event: date string (YYYY-MM-DD)
+            start_date = dt.fromisoformat(start_dt_str).date()
+            # Localize to Mountain Time at midnight
+            start_time = mountain_tz.localize(dt.combine(start_date, dt.min.time()))
+
+            # Google's end date is exclusive for all-day events
+            # For single-day events, end_date == start_date + 1
+            if end_dt_str:
+                end_date = dt.fromisoformat(end_dt_str).date()
+                # Check if multi-day (difference > 1 day)
+                if (end_date - start_date).days > 1:
+                    # Multi-day: use actual end date - 1 day (convert from exclusive to inclusive)
+                    end_date = end_date - timedelta(days=1)
+                    end_time = mountain_tz.localize(dt.combine(end_date, dt.min.time()))
+                    end_time = end_time.replace(hour=23, minute=59, second=0)
+                else:
+                    # Single day: end time is 11:59pm on same day
+                    end_time = start_time.replace(hour=23, minute=59, second=0)
+            else:
+                end_time = start_time.replace(hour=23, minute=59, second=0)
+        else:
+            # Timed event: ISO datetime string with timezone
+            start_time = dt.fromisoformat(start_dt_str.replace('Z', '+00:00'))
+            end_time = dt.fromisoformat(end_dt_str.replace('Z', '+00:00')) if end_dt_str else None
+
+        # Extract other fields
+        location = event.get("location", "")
+        description = event.get("description", "")
+
+        # Extract attendees
+        attendees = event.get("attendees", [])
+        attendee_list = [
+            attendee.get("displayName") or attendee.get("email", "")
+            for attendee in attendees
+            if attendee.get("self") is not True  # Exclude self
+        ]
+        attendee_str = ", ".join(attendee_list) if attendee_list else ""
+
+        # Event status (confirmed, tentative, cancelled)
+        status_map = {
+            "confirmed": "Confirmed",
+            "tentative": "Tentative",
+            "cancelled": "Cancelled"
+        }
+        status = status_map.get(event.get("status", "confirmed"), "Confirmed")
+
+        # Check if recurring
+        is_recurring = "recurringEventId" in event
+
+        # Build Airtable event data
+        airtable_data = {
+            "Event ID": event_id,
+            "Title": title,
+            "Start Time": start_time,
+            "All Day": is_all_day,
+            "Calendar": source_name,
+            "Status": status,
+            "Recurring": is_recurring
+        }
+
+        if end_time:
+            airtable_data["End Time"] = end_time
+
+        if location:
+            airtable_data["Location"] = location
+
+        if description:
+            airtable_data["Description"] = description
+
+        if attendee_str:
+            airtable_data["Attendees"] = attendee_str
+
+        return airtable_data
+
+    def sync_calendar_to_airtable(
+        self,
+        calendar_id: str,
+        calendar_name: str,
+        airtable_sync,
+        state_manager=None,
+        use_incremental: bool = True,
+        dry_run: bool = False,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sync a Google Calendar to Airtable
+
+        Args:
+            calendar_id: Google Calendar ID
+            calendar_name: Display name for the calendar
+            airtable_sync: AirtableCalendarSync instance
+            state_manager: StateManager instance for incremental sync
+            use_incremental: Use incremental sync if available (much faster)
+            dry_run: If True, don't actually create/update in Airtable
+            start_date: Start date for event range (optional)
+            end_date: End date for event range (optional)
+
+        Returns:
+            Dictionary with sync statistics
+        """
+        logger.info(f"Starting sync for calendar: {calendar_name}")
+
+        stats = {
+            "calendar_name": calendar_name,
+            "events_fetched": 0,
+            "events_created": 0,
+            "events_updated": 0,
+            "events_skipped": 0,
+            "errors": 0,
+            "incremental": False,
+            "new_sync_token": None,
+        }
+
+        try:
+            # Try incremental sync if enabled and state manager available
+            source_key = f"google_{calendar_name.lower().replace(' ', '_')}"
+            sync_token = None
+
+            if use_incremental and state_manager:
+                sync_token = state_manager.get_sync_token(source_key)
+                if sync_token:
+                    logger.info("Using incremental sync (only fetching changes)")
+                    stats["incremental"] = True
+
+            if use_incremental and state_manager:
+                # Use incremental sync
+                events, new_sync_token = self.get_calendar_events_incremental(
+                    calendar_id, sync_token=sync_token, start_date=start_date, end_date=end_date
+                )
+                stats["new_sync_token"] = new_sync_token
+            else:
+                # Fall back to full sync
+                events = self.get_calendar_events(calendar_id, start_date=start_date, end_date=end_date)
+
+            stats["events_fetched"] = len(events)
+
+            if not events:
+                logger.info(f"No events found in calendar '{calendar_name}'")
+                return stats
+
+            if dry_run:
+                logger.info(f"[DRY RUN] Would sync {len(events)} events")
+                # Show sample events
+                for i, event in enumerate(events[:5]):
+                    title = event.get("summary", "(No title)")
+                    start = safe_get(event, "start", "dateTime") or safe_get(
+                        event, "start", "date"
+                    )
+                    logger.info(f"  {i+1}. {title} ({start})")
+                if len(events) > 5:
+                    logger.info(f"  ... and {len(events) - 5} more events")
+                return stats
+
+            # Process each event
+            for event in events:
+                try:
+                    # Check if event is cancelled
+                    if event.get("status") == "cancelled":
+                        # For cancelled events, we should delete from Airtable if it exists
+                        event_id = event.get("id", "")
+                        existing = airtable_sync.get_event_by_external_id(event_id)
+                        if existing:
+                            airtable_sync.delete_event(existing['id'])
+                            logger.info(f"Deleted cancelled event: {event.get('summary', 'Unknown')}")
+                            stats["events_updated"] += 1
+                        else:
+                            stats["events_skipped"] += 1
+                        continue
+
+                    # Transform to Airtable format
+                    airtable_data = self.transform_event_to_airtable(
+                        event, calendar_name
+                    )
+
+                    # Sync to Airtable (create or update)
+                    existing = airtable_sync.get_event_by_external_id(airtable_data["Event ID"])
+
+                    if existing:
+                        # Update existing event
+                        airtable_sync.update_event(existing['id'], airtable_data)
+                        stats["events_updated"] += 1
+                    else:
+                        # Create new event
+                        airtable_sync.create_event(airtable_data)
+                        stats["events_created"] += 1
+
+                except Exception as e:
+                    logger.error(
+                        f"Error processing event '{event.get('summary', 'Unknown')}': {e}"
+                    )
+                    logger.exception("Full traceback:")
+                    stats["errors"] += 1
+
+            logger.info(
+                f"Sync completed for '{calendar_name}': "
+                f"{stats['events_created']} created, "
+                f"{stats['events_updated']} updated, "
+                f"{stats['events_skipped']} skipped, "
+                f"{stats['errors']} errors"
+            )
+
+            # Save sync token for next incremental sync
+            if state_manager and stats["new_sync_token"]:
+                state_manager.update_sync_state(
+                    source=source_key,
+                    success=True,
+                    sync_token=stats["new_sync_token"]
+                )
+                logger.debug("Saved sync token for next incremental sync")
+
+        except Exception as e:
+            logger.error(f"Error syncing calendar '{calendar_name}': {e}")
+            logger.exception("Full traceback:")
+            stats["errors"] += 1
+
+            # Mark sync as failed in state
+            if state_manager:
+                state_manager.update_sync_state(
+                    source=source_key,
+                    success=False,
+                    error=str(e)
+                )
+
+        return stats
+
 
 if __name__ == "__main__":
     # Test Google Calendar authentication

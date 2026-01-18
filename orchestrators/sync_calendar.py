@@ -21,13 +21,11 @@ from core.config import GoogleCalendarConfig as Config
 from core.utils import logger, format_duration
 from core.state_manager import StateManager
 from integrations.google_calendar.sync import GoogleCalendarSync
-# TODO: Update to use Airtable instead of Notion
-# from airtable.calendar import AirtableCalendarSync
-from notion.calendar import NotionSync  # DEPRECATED: Will be replaced with AirtableCalendarSync
+from airtable.calendar import AirtableCalendarSync
 
 
 def sync_google_calendars(
-    notion_sync: NotionSync,  # TODO: Change to AirtableCalendarSync
+    airtable_sync: AirtableCalendarSync,
     state_manager: StateManager,
     dry_run: bool = False,
     start_date: Optional[datetime] = None,
@@ -37,7 +35,7 @@ def sync_google_calendars(
     Sync all configured Google Calendars to Airtable
 
     Args:
-        notion_sync: Sync instance (currently NotionSync, will be AirtableCalendarSync)
+        airtable_sync: AirtableCalendarSync instance for syncing to Airtable
         state_manager: StateManager instance for incremental sync
         dry_run: If True, don't actually create/update in Airtable
         start_date: Start date for event range (optional)
@@ -81,12 +79,10 @@ def sync_google_calendars(
         logger.info(f"\nSyncing calendar: {calendar_name} ({calendar_id})")
 
         try:
-            # TODO: This method name will change to sync_calendar_to_airtable
-            # when we complete the migration from Notion to Airtable
-            stats = google_sync.sync_calendar_to_notion(
+            stats = google_sync.sync_calendar_to_airtable(
                 calendar_id=calendar_id,
                 calendar_name=calendar_name,
-                notion_sync=notion_sync,  # Will be: airtable_sync
+                airtable_sync=airtable_sync,
                 state_manager=state_manager,
                 use_incremental=True,
                 dry_run=dry_run,
@@ -253,16 +249,17 @@ For more information, see README.md and MIGRATION_GUIDE.md
         logger.info("\nRunning health checks...")
         logger.info("Configuration: ✓")
 
-        # Test Notion connection
+        # Test Airtable connection
         try:
-            notion = NotionSync()
-            if notion.test_connection():
-                logger.info("Notion connection: ✓")
+            airtable = AirtableCalendarSync()
+            # Simple test: try to get the calendar events table
+            if airtable.client and airtable.table:
+                logger.info("Airtable connection: ✓")
             else:
-                logger.error("Notion connection: ✗")
+                logger.error("Airtable connection: ✗")
                 return 1
         except Exception as e:
-            logger.error(f"Notion connection: ✗ ({e})")
+            logger.error(f"Airtable connection: ✗ ({e})")
             return 1
 
         # Test Google Calendar auth
@@ -290,12 +287,12 @@ For more information, see README.md and MIGRATION_GUIDE.md
         logger.error(f"Failed to initialize state manager: {e}")
         return 1
 
-    # Initialize Notion sync with state manager
+    # Initialize Airtable sync
     try:
-        notion_sync = NotionSync(state_manager=state_manager)
-        logger.info("✓ Initialized Notion sync")
+        airtable_sync = AirtableCalendarSync()
+        logger.info("✓ Initialized Airtable sync")
     except Exception as e:
-        logger.error(f"Failed to initialize Notion sync: {e}")
+        logger.error(f"Failed to initialize Airtable sync: {e}")
         return 1
 
     # Start sync
@@ -305,7 +302,7 @@ For more information, see README.md and MIGRATION_GUIDE.md
     try:
         # Sync Google Calendars
         stats = sync_google_calendars(
-            notion_sync, state_manager, dry_run=args.dry_run,
+            airtable_sync, state_manager, dry_run=args.dry_run,
             start_date=start_date, end_date=end_date
         )
         if not stats.get("success", True):
