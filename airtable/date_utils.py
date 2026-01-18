@@ -11,31 +11,27 @@ import platform
 
 def date_to_day_id(date_obj) -> str:
     """
-    Convert a date object to Day table ID format (m/d/yy - US format).
+    Convert a date object to Day table lookup value (ISO format YYYY-MM-DD).
 
     Args:
         date_obj: datetime object, date object, or ISO date string
 
     Returns:
-        str: Date in m/d/yy format (e.g., "1/17/26" for Jan 17, 2026)
+        str: Date in YYYY-MM-DD format (e.g., "2026-01-17" for Jan 17, 2026)
 
     Examples:
         >>> from datetime import datetime
         >>> date_to_day_id(datetime(2026, 1, 17))
-        '1/17/26'
+        '2026-01-17'
         >>> date_to_day_id("2026-01-17")
-        '1/17/26'
+        '2026-01-17'
     """
     if isinstance(date_obj, str):
         # Handle ISO format strings
         date_obj = datetime.fromisoformat(date_obj.replace('Z', '+00:00'))
 
-    # Platform-specific formatting (Windows uses # instead of -)
-    # US format: month/day/year
-    if platform.system() == "Windows":
-        return date_obj.strftime("%#m/%#d/%y")
-    else:
-        return date_obj.strftime("%-m/%-d/%y")
+    # Return ISO format for Day table lookup
+    return date_obj.strftime("%Y-%m-%d")
 
 
 def date_to_week_id(date_obj) -> str:

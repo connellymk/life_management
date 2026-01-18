@@ -145,20 +145,31 @@ class GarminConfig(Config):
     @classmethod
     def validate(cls) -> tuple[bool, List[str]]:
         """Validate Garmin configuration."""
-        is_valid, errors = super().validate()
+        errors = []
 
+        # Check Garmin credentials
         if not cls.GARMIN_EMAIL:
             errors.append("GARMIN_EMAIL not set")
         if not cls.GARMIN_PASSWORD:
             errors.append("GARMIN_PASSWORD not set")
 
-        for db_id, name in [
-            (cls.NOTION_WORKOUTS_DB_ID, "NOTION_WORKOUTS_DB_ID"),
-            (cls.NOTION_DAILY_METRICS_DB_ID, "NOTION_DAILY_METRICS_DB_ID"),
-            (cls.NOTION_BODY_METRICS_DB_ID, "NOTION_BODY_METRICS_DB_ID"),
-        ]:
-            if not db_id:
-                errors.append(f"{name} not set")
+        # Check Airtable configuration (replaces Notion)
+        if not cls.AIRTABLE_ACCESS_TOKEN and not cls.AIRTABLE_API_KEY:
+            errors.append(
+                "AIRTABLE_ACCESS_TOKEN or AIRTABLE_API_KEY not set. "
+                "Personal Access Token recommended (get from https://airtable.com/create/tokens)"
+            )
+
+        if not cls.AIRTABLE_BASE_ID:
+            errors.append("AIRTABLE_BASE_ID not set")
+
+        # Check that required table names are set
+        if not cls.AIRTABLE_TRAINING_SESSIONS:
+            errors.append("AIRTABLE_TRAINING_SESSIONS table name not set")
+        if not cls.AIRTABLE_HEALTH_METRICS:
+            errors.append("AIRTABLE_HEALTH_METRICS table name not set")
+        if not cls.AIRTABLE_BODY_METRICS:
+            errors.append("AIRTABLE_BODY_METRICS table name not set")
 
         return len(errors) == 0, errors
 

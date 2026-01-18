@@ -158,7 +158,37 @@ class GarminSync:
             # Extract basic info from activity object (don't fetch summary to avoid rate limits)
             activity_id = str(activity.activity_id) if hasattr(activity, 'activity_id') else ""
             activity_name = activity.activity_name if hasattr(activity, 'activity_name') else "Workout"
-            activity_type = activity.activity_type if hasattr(activity, 'activity_type') else "OTHER"
+
+            # Convert activity_type to string and map to Airtable format
+            if hasattr(activity, 'activity_type'):
+                if hasattr(activity.activity_type, 'type_key'):
+                    raw_type = str(activity.activity_type.type_key)
+                elif hasattr(activity.activity_type, 'name'):
+                    raw_type = str(activity.activity_type.name)
+                else:
+                    raw_type = "other"
+
+                # Map Garmin activity types to Airtable Activity Type options
+                type_mapping = {
+                    'running': 'Running',
+                    'trail_running': 'Running',
+                    'treadmill_running': 'Running',
+                    'cycling': 'Cycling',
+                    'road_biking': 'Cycling',
+                    'mountain_biking': 'Cycling',
+                    'virtual_ride': 'Cycling',
+                    'swimming': 'Swimming',
+                    'open_water_swimming': 'Swimming',
+                    'lap_swimming': 'Swimming',
+                    'hiking': 'Hiking',
+                    'walking': 'Walking',
+                    'strength_training': 'Strength',
+                    'cardio_training': 'Strength',
+                }
+
+                activity_type = type_mapping.get(raw_type.lower(), 'Other')
+            else:
+                activity_type = "Other"
 
             # Date/time (start_time_local is already a datetime object)
             start_time = activity.start_time_local

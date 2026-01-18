@@ -54,7 +54,7 @@ class AirtableTrainingSessionsSync:
             'Average Pace': 9.5,  # min/mile
             'Average Speed': 6.3,  # mph
             'Elevation Gain': 250,  # feet
-            'Garmin Link': 'https://connect.garmin.com/...',
+            'Garmin URL': 'https://connect.garmin.com/modern/activity/12345678',
             'Notes': 'Felt great today!'
         }
         """
@@ -63,51 +63,52 @@ class AirtableTrainingSessionsSync:
         if isinstance(start_time, str):
             start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
 
-        day_id = date_to_day_id(start_time)
-        week_id = date_to_week_id(start_time)
+        day_value = date_to_day_id(start_time)
+        week_value = date_to_week_id(start_time)
+
+        # Look up actual Airtable record IDs for Day and Week
+        day_record_id = self.client.get_day_record_id(day_value)
+        week_record_id = self.client.get_week_record_id(week_value)
 
         # Build Airtable record
         record = {
             'Activity ID': str(session_data.get('Activity ID')),
             'Activity Name': session_data.get('Activity Name'),
             'Activity Type': session_data.get('Activity Type'),
-            'Day': [day_id],  # Link to Day table
-            'Week': [week_id],  # Link to Week table
+            'Day': [day_record_id],  # Link to Day table using actual record ID
+            'Week': [week_record_id],  # Link to Week table using actual record ID
             'Start Time': format_airtable_datetime(start_time),
         }
 
-        # Add optional numeric fields
+        # Add optional numeric fields (using actual Airtable field names)
         if session_data.get('Duration') is not None:
-            record['Duration'] = session_data.get('Duration')
+            record['Duration (min)'] = session_data.get('Duration')
 
         if session_data.get('Distance') is not None:
-            record['Distance'] = session_data.get('Distance')
+            record['Distance (mi)'] = session_data.get('Distance')
 
         if session_data.get('Calories') is not None:
             record['Calories'] = session_data.get('Calories')
 
         if session_data.get('Average HR') is not None:
-            record['Average HR'] = session_data.get('Average HR')
+            record['Avg HR'] = session_data.get('Average HR')
 
         if session_data.get('Max HR') is not None:
             record['Max HR'] = session_data.get('Max HR')
 
         if session_data.get('Average Pace') is not None:
-            record['Average Pace'] = session_data.get('Average Pace')
-
-        if session_data.get('Average Speed') is not None:
-            record['Average Speed'] = session_data.get('Average Speed')
+            record['Avg Pace (min/mi)'] = session_data.get('Average Pace')
 
         if session_data.get('Elevation Gain') is not None:
-            record['Elevation Gain'] = session_data.get('Elevation Gain')
+            record['Elevation Gain (ft)'] = session_data.get('Elevation Gain')
 
-        if session_data.get('Garmin Link'):
-            record['Garmin Link'] = session_data.get('Garmin Link')
+        if session_data.get('Garmin URL'):
+            record['Garmin URL'] = session_data.get('Garmin URL')
 
         if session_data.get('Notes'):
             record['Notes'] = session_data.get('Notes')
 
-        logger.info(f"Creating session '{record['Activity Name']}' for {day_id}")
+        logger.info(f"Creating session '{record['Activity Name']}' for {day_value}")
         created = self.table.create(record)
         return created
 
@@ -122,18 +123,64 @@ class AirtableTrainingSessionsSync:
         Returns:
             Dict: Updated record from Airtable
         """
+        # Build update record with field name mapping
+        record = {}
+
         # Convert start time to Day/Week IDs if provided
         if 'Start Time' in session_data:
             start_time = session_data['Start Time']
             if isinstance(start_time, str):
                 start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
 
-            session_data['Day'] = [date_to_day_id(start_time)]
-            session_data['Week'] = [date_to_week_id(start_time)]
-            session_data['Start Time'] = format_airtable_datetime(start_time)
+            day_value = date_to_day_id(start_time)
+            week_value = date_to_week_id(start_time)
+
+            # Look up actual Airtable record IDs
+            day_record_id = self.client.get_day_record_id(day_value)
+            week_record_id = self.client.get_week_record_id(week_value)
+
+            record['Day'] = [day_record_id]
+            record['Week'] = [week_record_id]
+            record['Start Time'] = format_airtable_datetime(start_time)
+
+        # Add basic fields
+        if session_data.get('Activity ID'):
+            record['Activity ID'] = str(session_data.get('Activity ID'))
+        if session_data.get('Activity Name'):
+            record['Activity Name'] = session_data.get('Activity Name')
+        if session_data.get('Activity Type'):
+            record['Activity Type'] = session_data.get('Activity Type')
+
+        # Add optional numeric fields (using actual Airtable field names)
+        if session_data.get('Duration') is not None:
+            record['Duration (min)'] = session_data.get('Duration')
+
+        if session_data.get('Distance') is not None:
+            record['Distance (mi)'] = session_data.get('Distance')
+
+        if session_data.get('Calories') is not None:
+            record['Calories'] = session_data.get('Calories')
+
+        if session_data.get('Average HR') is not None:
+            record['Avg HR'] = session_data.get('Average HR')
+
+        if session_data.get('Max HR') is not None:
+            record['Max HR'] = session_data.get('Max HR')
+
+        if session_data.get('Average Pace') is not None:
+            record['Avg Pace (min/mi)'] = session_data.get('Average Pace')
+
+        if session_data.get('Elevation Gain') is not None:
+            record['Elevation Gain (ft)'] = session_data.get('Elevation Gain')
+
+        if session_data.get('Garmin URL'):
+            record['Garmin URL'] = session_data.get('Garmin URL')
+
+        if session_data.get('Notes'):
+            record['Notes'] = session_data.get('Notes')
 
         logger.info(f"Updating session {record_id}")
-        updated = self.table.update(record_id, session_data)
+        updated = self.table.update(record_id, record)
         return updated
 
     def get_session_by_activity_id(self, activity_id: str) -> Optional[Dict]:
@@ -244,22 +291,24 @@ class AirtableHealthMetricsSync:
         if isinstance(date, str):
             date = datetime.fromisoformat(date.replace('Z', '+00:00'))
 
-        day_id = date_to_day_id(date)
+        day_value = date_to_day_id(date)
+
+        # Look up actual Airtable record ID for Day
+        day_record_id = self.client.get_day_record_id(day_value)
 
         # Check if record already exists for this day
-        existing = self.get_metrics_by_day(day_id)
+        existing = self.get_metrics_by_day(day_value)
 
-        # Build record
-        record = {'Day': [day_id], 'Date': format_airtable_datetime(date)}
+        # Build record - use date as Name field
+        record = {
+            'Name': day_value,  # Use ISO date format as Name
+            'Day': [day_record_id]
+        }
 
-        # Add all optional metrics
+        # Add all optional metrics (excluding HRV, Deep Sleep, REM Sleep, Light Sleep)
         for field in [
             'Resting HR',
-            'HRV',
             'Sleep Duration',
-            'Deep Sleep',
-            'REM Sleep',
-            'Light Sleep',
             'Awake Time',
             'Sleep Score',
             'Steps',
@@ -280,29 +329,36 @@ class AirtableHealthMetricsSync:
             record['Notes'] = metrics_data.get('Notes')
 
         if existing:
-            logger.info(f"Updating health metrics for {day_id}")
+            logger.info(f"Updating health metrics for {day_value}")
             updated = self.table.update(existing['id'], record)
             return updated
         else:
-            logger.info(f"Creating health metrics for {day_id}")
+            logger.info(f"Creating health metrics for {day_value}")
             created = self.table.create(record)
             return created
 
-    def get_metrics_by_day(self, day_id: str) -> Optional[Dict]:
+    def get_metrics_by_day(self, day_value: str) -> Optional[Dict]:
         """
         Get health metrics for a specific day.
 
         Args:
-            day_id: Day ID in d/m/yy format (e.g., "17/1/26")
+            day_value: Day value in ISO format (e.g., "2026-01-17")
 
         Returns:
             Dict or None: Metrics record if found
         """
-        formula = f"SEARCH('{day_id}', {{Day}})"
-        records = self.table.all(formula=formula)
+        # Look up Day record ID
+        try:
+            day_record_id = self.client.get_day_record_id(day_value)
+            formula = f"SEARCH('{day_record_id}', ARRAYJOIN({{Day}}))"
+            records = self.table.all(formula=formula)
 
-        if records:
-            return records[0]
+            if records:
+                return records[0]
+        except ValueError:
+            # Day record doesn't exist yet
+            pass
+
         return None
 
 
@@ -346,11 +402,14 @@ class AirtableBodyMetricsSync:
         if isinstance(date, str):
             date = datetime.fromisoformat(date.replace('Z', '+00:00'))
 
-        day_id = date_to_day_id(date)
+        day_value = date_to_day_id(date)
+
+        # Look up actual Airtable record ID for Day
+        day_record_id = self.client.get_day_record_id(day_value)
 
         # Build record
         record = {
-            'Day': [day_id],
+            'Day': [day_record_id],
             'Date': format_airtable_datetime(date),
         }
 
@@ -369,6 +428,6 @@ class AirtableBodyMetricsSync:
         if measurement_data.get('Notes'):
             record['Notes'] = measurement_data.get('Notes')
 
-        logger.info(f"Creating body measurement for {day_id}")
+        logger.info(f"Creating body measurement for {day_value}")
         created = self.table.create(record)
         return created

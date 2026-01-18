@@ -97,3 +97,48 @@ class AirtableClient:
     def get_sync_logs_table(self):
         """Get the Sync Logs table."""
         return self.get_table(AirtableConfig.AIRTABLE_SYNC_LOGS)
+
+    def get_day_record_id(self, day_value: str) -> str:
+        """
+        Look up the Airtable record ID for a Day table record by its Day field value.
+
+        Args:
+            day_value: Day field value in ISO format (e.g., "2026-01-17")
+
+        Returns:
+            str: Airtable record ID (e.g., "recXXXXXXXXXXXXXX")
+
+        Raises:
+            ValueError: If no matching Day record is found
+        """
+        day_table = self.get_day_table()
+        # Use DATESTR to convert the Date field to string for comparison
+        formula = f"DATESTR({{Day}}) = '{day_value}'"
+        records = day_table.all(formula=formula, max_records=1)
+
+        if not records:
+            raise ValueError(f"No Day record found for {day_value}. Please ensure the Day table has a record with Day='{day_value}'")
+
+        return records[0]['id']
+
+    def get_week_record_id(self, week_value: str) -> str:
+        """
+        Look up the Airtable record ID for a Week table record by its Name/Week field value.
+
+        Args:
+            week_value: Week field value (e.g., "2-26")
+
+        Returns:
+            str: Airtable record ID (e.g., "recXXXXXXXXXXXXXX")
+
+        Raises:
+            ValueError: If no matching Week record is found
+        """
+        week_table = self.get_week_table()
+        formula = f"{{Name}} = '{week_value}'"
+        records = week_table.all(formula=formula)
+
+        if not records:
+            raise ValueError(f"No Week record found for {week_value}. Please ensure the Week table has a record with Name='{week_value}'")
+
+        return records[0]['id']
