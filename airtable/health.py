@@ -392,17 +392,13 @@ class AirtableHealthMetricsSync:
         Returns:
             Dict or None: Metrics record if found
         """
-        # Look up Day record ID
-        try:
-            day_record_id = self.client.get_day_record_id(day_value)
-            formula = f"SEARCH('{day_record_id}', ARRAYJOIN({{Day}}))"
-            records = self.table.all(formula=formula)
+        # Name field is a date type, so we need to use DATESTR to compare
+        # DATESTR converts the date to ISO format (YYYY-MM-DD) for comparison
+        formula = f"DATESTR({{Name}}) = '{day_value}'"
+        records = self.table.all(formula=formula, max_records=1)
 
-            if records:
-                return records[0]
-        except ValueError:
-            # Day record doesn't exist yet
-            pass
+        if records:
+            return records[0]
 
         return None
 
