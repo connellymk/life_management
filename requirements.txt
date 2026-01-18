@@ -13,6 +13,9 @@ plaid-python>=14.0.0
 # Notion API
 notion-client>=2.0.0
 
+# Airtable API
+pyairtable>=2.0.0
+
 # Cryptography (for secure token storage)
 cryptography>=41.0.0
 
