@@ -87,7 +87,7 @@ async function getDayRecordId(dateStr: string): Promise<string | null> {
   try {
     const records = await base(TABLES.DAY)
       .select({
-        filterByFormula: `{Day} = '${dateStr}'`,
+        filterByFormula: `DATESTR({Day}) = '${dateStr}'`,
         maxRecords: 1,
       })
       .all();
@@ -100,40 +100,6 @@ async function getDayRecordId(dateStr: string): Promise<string | null> {
     console.error(`Error finding Day record for ${dateStr}:`, error);
     return null;
   }
-}
-
-// Helper function to get all Day record IDs for a date range
-async function getDayRecordIdsForRange(startDate: string, endDate: string): Promise<string[]> {
-  try {
-    const records = await base(TABLES.DAY)
-      .select({
-        filterByFormula: `AND({Day} >= '${startDate}', {Day} <= '${endDate}')`,
-      })
-      .all();
-
-    return records.map(r => r.id);
-  } catch (error) {
-    console.error(`Error finding Day records for range ${startDate} to ${endDate}:`, error);
-    return [];
-  }
-}
-
-// Helper function to group records by date
-function groupByDate(records: any[], dateField: string): Record<string, any[]> {
-  const grouped: Record<string, any[]> = {};
-
-  records.forEach(record => {
-    const date = record[dateField];
-    if (date) {
-      const dateKey = typeof date === 'string' ? date.split('T')[0] : date;
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = [];
-      }
-      grouped[dateKey].push(record);
-    }
-  });
-
-  return grouped;
 }
 
 // Create the MCP server
@@ -174,23 +140,6 @@ const tools: Tool[] = [
     },
   },
   {
-    name: 'get_complete_schedule',
-    description: 'Get a complete schedule for a specific date or date range with all data in one call',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        start_date: {
-          type: 'string',
-          description: 'Start date in YYYY-MM-DD format (defaults to today)',
-        },
-        end_date: {
-          type: 'string',
-          description: 'End date in YYYY-MM-DD format (defaults to start_date)',
-        },
-      },
-    },
-  },
-  {
     name: 'get_calendar_events',
     description: 'Get calendar events for a specific date range',
     inputSchema: {
@@ -224,23 +173,6 @@ const tools: Tool[] = [
   {
     name: 'get_training_sessions',
     description: 'Get training sessions for a date range',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        start_date: {
-          type: 'string',
-          description: 'Start date in YYYY-MM-DD format (defaults to today)',
-        },
-        end_date: {
-          type: 'string',
-          description: 'End date in YYYY-MM-DD format (defaults to 7 days from start)',
-        },
-      },
-    },
-  },
-  {
-    name: 'get_training_plans',
-    description: 'Get training plans for a date range',
     inputSchema: {
       type: 'object',
       properties: {
@@ -351,10 +283,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           day_record_id: dayRecordId,
           calendar_events: [],
           tasks: [],
-          training_plans: [],
-          training_sessions: [],
+          training: [],
           meals: [],
-          health: {},
+          health: [],
         };
 
         // Get calendar events for today
@@ -370,7 +301,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           results.calendar_events_error = String(error);
         }
 
-        // Get all tasks (Tasks table has no fields currently, so just return empty)
+        // Get all tasks (no filtering to avoid field name issues)
         try {
           const tasks = await base(TABLES.TASKS)
             .select({
@@ -382,29 +313,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           results.tasks_error = String(error);
         }
 
-        // Get training plans linked to today
+        // Get training sessions linked to today (if Day record exists)
         if (dayRecordId) {
           try {
-            const plans = await base(TABLES.TRAINING_PLANS)
+            const training = await base(TABLES.TRAINING_SESSIONS)
               .select({
                 filterByFormula: `SEARCH('${dayRecordId}', ARRAYJOIN({Day}))`,
               })
               .all();
-            results.training_plans = plans.map(r => r.fields);
+            results.training = training.map(r => r.fields);
           } catch (error) {
-            results.training_plans_error = String(error);
-          }
-
-          // Get training sessions linked to today
-          try {
-            const sessions = await base(TABLES.TRAINING_SESSIONS)
-              .select({
-                filterByFormula: `SEARCH('${dayRecordId}', ARRAYJOIN({Day}))`,
-              })
-              .all();
-            results.training_sessions = sessions.map(r => r.fields);
-          } catch (error) {
-            results.training_sessions_error = String(error);
+            results.training_error = String(error);
           }
         }
 
@@ -424,11 +343,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           const health = await base(TABLES.HEALTH_METRICS)
             .select({
-              filterByFormula: `{Name} = '${today}'`,
-              maxRecords: 1,
+              filterByFormula: `DATESTR({Name}) = '${today}'`,
             })
             .all();
-          results.health = health.length > 0 ? health[0].fields : {};
+          results.health = health.map(r => r.fields);
         } catch (error) {
           results.health_error = String(error);
         }
@@ -450,18 +368,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const results: any = {
           week_start: start,
           week_end: end,
-          days: {},
-          summary: {
-            total_events: 0,
-            total_tasks: 0,
-            total_training_plans: 0,
-            total_training_sessions: 0,
-            total_meals: 0,
-          },
+          calendar_events: [],
+          tasks: [],
+          training: [],
+          meals: [],
         };
-
-        // Get all Day records for the week
-        const dayRecordIds = await getDayRecordIdsForRange(start, end);
 
         // Get calendar events for the week
         try {
@@ -471,18 +382,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               sort: [{ field: 'Date', direction: 'asc' }, { field: 'Start Time', direction: 'asc' }],
             })
             .all();
-
-          const eventsByDate = groupByDate(events.map(r => r.fields), 'Date');
-          Object.entries(eventsByDate).forEach(([date, evts]) => {
-            if (!results.days[date]) results.days[date] = {};
-            results.days[date].calendar_events = evts;
-            results.summary.total_events += evts.length;
-          });
+          results.calendar_events = events.map(r => r.fields);
         } catch (error) {
           results.calendar_events_error = String(error);
         }
 
-        // Get all tasks
+        // Get all tasks (simplified - no date filtering)
         try {
           const tasks = await base(TABLES.TASKS)
             .select({
@@ -490,41 +395,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             })
             .all();
           results.tasks = tasks.map(r => r.fields);
-          results.summary.total_tasks = tasks.length;
         } catch (error) {
           results.tasks_error = String(error);
         }
 
-        // Get training plans for the week
-        if (dayRecordIds.length > 0) {
-          try {
-            const dayIdFilter = dayRecordIds.map(id => `SEARCH('${id}', ARRAYJOIN({Day}))`).join(', ');
-            const plans = await base(TABLES.TRAINING_PLANS)
-              .select({
-                filterByFormula: `OR(${dayIdFilter})`,
-              })
-              .all();
-
-            results.training_plans = plans.map(r => r.fields);
-            results.summary.total_training_plans = plans.length;
-          } catch (error) {
-            results.training_plans_error = String(error);
-          }
-
-          // Get training sessions for the week
-          try {
-            const dayIdFilter = dayRecordIds.map(id => `SEARCH('${id}', ARRAYJOIN({Day}))`).join(', ');
-            const sessions = await base(TABLES.TRAINING_SESSIONS)
-              .select({
-                filterByFormula: `OR(${dayIdFilter})`,
-              })
-              .all();
-
-            results.training_sessions = sessions.map(r => r.fields);
-            results.summary.total_training_sessions = sessions.length;
-          } catch (error) {
-            results.training_sessions_error = String(error);
-          }
+        // Get training for the week
+        try {
+          const training = await base(TABLES.TRAINING_SESSIONS)
+            .select({
+              maxRecords: 100,
+            })
+            .all();
+          results.training = training.map(r => r.fields);
+        } catch (error) {
+          results.training_error = String(error);
         }
 
         // Get meals for the week
@@ -532,128 +416,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const meals = await base(TABLES.PLANNED_MEALS)
             .select({
               filterByFormula: `AND({Date} >= '${start}', {Date} <= '${end}')`,
-              sort: [{ field: 'Date', direction: 'asc' }],
             })
             .all();
-
-          const mealsByDate = groupByDate(meals.map(r => r.fields), 'Date');
-          Object.entries(mealsByDate).forEach(([date, mls]) => {
-            if (!results.days[date]) results.days[date] = {};
-            results.days[date].planned_meals = mls;
-            results.summary.total_meals += mls.length;
-          });
+          results.meals = meals.map(r => r.fields);
         } catch (error) {
           results.meals_error = String(error);
-        }
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(results, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'get_complete_schedule': {
-        const startDate = (args as any)?.start_date ?? getTodayDate();
-        const endDate = (args as any)?.end_date ?? startDate;
-
-        const results: any = {
-          date_range: {
-            start: startDate,
-            end: endDate,
-          },
-          days: [],
-        };
-
-        // Get Day record IDs for the range
-        const dayRecords = await base(TABLES.DAY)
-          .select({
-            filterByFormula: `AND({Day} >= '${startDate}', {Day} <= '${endDate}')`,
-            sort: [{ field: 'Day', direction: 'asc' }],
-          })
-          .all();
-
-        // For each day, gather all data
-        for (const dayRecord of dayRecords) {
-          const dayId = dayRecord.id;
-          const date = dayRecord.fields.Day as string;
-
-          const dayData: any = {
-            date,
-            weekday: dayRecord.fields.Weekday,
-            calendar_events: [],
-            training_plans: [],
-            training_sessions: [],
-            meals: [],
-            health_metrics: null,
-          };
-
-          // Calendar events
-          try {
-            const events = await base(TABLES.CALENDAR_EVENTS)
-              .select({
-                filterByFormula: `{Date} = '${date}'`,
-                sort: [{ field: 'Start Time', direction: 'asc' }],
-              })
-              .all();
-            dayData.calendar_events = events.map(r => r.fields);
-          } catch (error) {
-            dayData.calendar_events_error = String(error);
-          }
-
-          // Training plans
-          try {
-            const plans = await base(TABLES.TRAINING_PLANS)
-              .select({
-                filterByFormula: `SEARCH('${dayId}', ARRAYJOIN({Day}))`,
-              })
-              .all();
-            dayData.training_plans = plans.map(r => r.fields);
-          } catch (error) {
-            dayData.training_plans_error = String(error);
-          }
-
-          // Training sessions
-          try {
-            const sessions = await base(TABLES.TRAINING_SESSIONS)
-              .select({
-                filterByFormula: `SEARCH('${dayId}', ARRAYJOIN({Day}))`,
-              })
-              .all();
-            dayData.training_sessions = sessions.map(r => r.fields);
-          } catch (error) {
-            dayData.training_sessions_error = String(error);
-          }
-
-          // Meals
-          try {
-            const meals = await base(TABLES.PLANNED_MEALS)
-              .select({
-                filterByFormula: `{Date} = '${date}'`,
-              })
-              .all();
-            dayData.meals = meals.map(r => r.fields);
-          } catch (error) {
-            dayData.meals_error = String(error);
-          }
-
-          // Health metrics
-          try {
-            const health = await base(TABLES.HEALTH_METRICS)
-              .select({
-                filterByFormula: `{Name} = '${date}'`,
-                maxRecords: 1,
-              })
-              .all();
-            dayData.health_metrics = health.length > 0 ? health[0].fields : null;
-          } catch (error) {
-            dayData.health_metrics_error = String(error);
-          }
-
-          results.days.push(dayData);
         }
 
         return {
@@ -712,61 +479,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         endDateDefault.setDate(endDateDefault.getDate() + 7);
         const endDate = (args as any)?.end_date ?? endDateDefault.toISOString().split('T')[0];
 
-        // Get Day record IDs for the range
-        const dayRecordIds = await getDayRecordIdsForRange(startDate, endDate);
-
-        if (dayRecordIds.length === 0) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: 'No Day records found for this date range.',
-              },
-            ],
-          };
-        }
-
-        const dayIdFilter = dayRecordIds.map(id => `SEARCH('${id}', ARRAYJOIN({Day}))`).join(', ');
         const records = await base(TABLES.TRAINING_SESSIONS)
           .select({
-            filterByFormula: `OR(${dayIdFilter})`,
-          })
-          .all();
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: formatRecords(records),
-            },
-          ],
-        };
-      }
-
-      case 'get_training_plans': {
-        const startDate = (args as any)?.start_date ?? getTodayDate();
-        const endDateDefault = new Date(startDate);
-        endDateDefault.setDate(endDateDefault.getDate() + 7);
-        const endDate = (args as any)?.end_date ?? endDateDefault.toISOString().split('T')[0];
-
-        // Get Day record IDs for the range
-        const dayRecordIds = await getDayRecordIdsForRange(startDate, endDate);
-
-        if (dayRecordIds.length === 0) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: 'No Day records found for this date range.',
-              },
-            ],
-          };
-        }
-
-        const dayIdFilter = dayRecordIds.map(id => `SEARCH('${id}', ARRAYJOIN({Day}))`).join(', ');
-        const records = await base(TABLES.TRAINING_PLANS)
-          .select({
-            filterByFormula: `OR(${dayIdFilter})`,
+            maxRecords: 100,
           })
           .all();
 
@@ -786,8 +501,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const records = await base(TABLES.HEALTH_METRICS)
           .select({
-            filterByFormula: `AND({Name} >= '${startDate}', {Name} <= '${endDate}')`,
-            sort: [{ field: 'Name', direction: 'asc' }],
+            filterByFormula: `AND(DATESTR({Name}) >= '${startDate}', DATESTR({Name}) <= '${endDate}')`,
           })
           .all();
 
