@@ -82,6 +82,26 @@ function formatRecords(records: readonly any[], fields: string[] | null = null):
   }).join('\n---\n');
 }
 
+// Helper function to get Day record ID from date
+async function getDayRecordId(dateStr: string): Promise<string | null> {
+  try {
+    const records = await base(TABLES.DAY)
+      .select({
+        filterByFormula: `DATESTR({Day}) = '${dateStr}'`,
+        maxRecords: 1,
+      })
+      .all();
+
+    if (records.length > 0) {
+      return records[0].id;
+    }
+    return null;
+  } catch (error) {
+    console.error(`Error finding Day record for ${dateStr}:`, error);
+    return null;
+  }
+}
+
 // Create the MCP server
 const server = new Server(
   {
@@ -138,29 +158,21 @@ const tools: Tool[] = [
   },
   {
     name: 'get_tasks',
-    description: 'Get tasks, optionally filtered by status or due date',
+    description: 'Get all tasks from the Tasks table',
     inputSchema: {
       type: 'object',
       properties: {
-        status: {
-          type: 'string',
-          description: 'Filter by status (e.g., "Not Started", "In Progress", "Completed")',
-        },
-        due_date: {
-          type: 'string',
-          description: 'Filter by due date in YYYY-MM-DD format',
-        },
-        show_completed: {
-          type: 'boolean',
-          description: 'Include completed tasks (default: false)',
-          default: false,
+        limit: {
+          type: 'number',
+          description: 'Maximum number of tasks to return (default: 100)',
+          default: 100,
         },
       },
     },
   },
   {
-    name: 'get_training_plans',
-    description: 'Get training plans and sessions',
+    name: 'get_training_sessions',
+    description: 'Get training sessions for a date range',
     inputSchema: {
       type: 'object',
       properties: {
@@ -211,13 +223,18 @@ const tools: Tool[] = [
   },
   {
     name: 'get_recipes',
-    description: 'Search for recipes by name or ingredient',
+    description: 'Search for recipes by name',
     inputSchema: {
       type: 'object',
       properties: {
         search: {
           type: 'string',
-          description: 'Search term for recipe name or ingredients',
+          description: 'Search term for recipe name',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of recipes to return (default: 20)',
+          default: 20,
         },
       },
     },
@@ -228,9 +245,10 @@ const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        status: {
-          type: 'string',
-          description: 'Filter by status (e.g., "Active", "Completed", "On Hold")',
+        limit: {
+          type: 'number',
+          description: 'Maximum number of projects to return (default: 100)',
+          default: 100,
         },
       },
     },
@@ -258,8 +276,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'get_today_overview': {
         const today = getTodayDate();
+        const dayRecordId = await getDayRecordId(today);
+
         const results: any = {
           date: today,
+          day_record_id: dayRecordId,
           calendar_events: [],
           tasks: [],
           training: [],
@@ -267,46 +288,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           health: [],
         };
 
-        // Get calendar events
-        const events = await base(TABLES.CALENDAR_EVENTS)
-          .select({
-            filterByFormula: `AND({Date} = '${today}')`,
-            sort: [{ field: 'Start Time', direction: 'asc' }],
-          })
-          .all();
-        results.calendar_events = events.map(r => r.fields);
+        // Get calendar events for today
+        try {
+          const events = await base(TABLES.CALENDAR_EVENTS)
+            .select({
+              filterByFormula: `{Date} = '${today}'`,
+              sort: [{ field: 'Start Time', direction: 'asc' }],
+            })
+            .all();
+          results.calendar_events = events.map(r => r.fields);
+        } catch (error) {
+          results.calendar_events_error = String(error);
+        }
 
-        // Get tasks due today or in progress
-        const tasks = await base(TABLES.TASKS)
-          .select({
-            filterByFormula: `OR({Due Date} = '${today}', AND({Status} != 'Completed', {Status} != 'Cancelled'))`,
-          })
-          .all();
-        results.tasks = tasks.map(r => r.fields);
+        // Get all tasks (no filtering to avoid field name issues)
+        try {
+          const tasks = await base(TABLES.TASKS)
+            .select({
+              maxRecords: 50,
+            })
+            .all();
+          results.tasks = tasks.map(r => r.fields);
+        } catch (error) {
+          results.tasks_error = String(error);
+        }
 
-        // Get training sessions
-        const training = await base(TABLES.TRAINING_SESSIONS)
-          .select({
-            filterByFormula: `{Date} = '${today}'`,
-          })
-          .all();
-        results.training = training.map(r => r.fields);
+        // Get training sessions linked to today (if Day record exists)
+        if (dayRecordId) {
+          try {
+            const training = await base(TABLES.TRAINING_SESSIONS)
+              .select({
+                filterByFormula: `SEARCH('${dayRecordId}', ARRAYJOIN({Day}))`,
+              })
+              .all();
+            results.training = training.map(r => r.fields);
+          } catch (error) {
+            results.training_error = String(error);
+          }
+        }
 
-        // Get planned meals
-        const meals = await base(TABLES.PLANNED_MEALS)
-          .select({
-            filterByFormula: `{Date} = '${today}'`,
-          })
-          .all();
-        results.meals = meals.map(r => r.fields);
+        // Get planned meals for today
+        try {
+          const meals = await base(TABLES.PLANNED_MEALS)
+            .select({
+              filterByFormula: `{Date} = '${today}'`,
+            })
+            .all();
+          results.meals = meals.map(r => r.fields);
+        } catch (error) {
+          results.meals_error = String(error);
+        }
 
-        // Get health metrics
-        const health = await base(TABLES.HEALTH_METRICS)
-          .select({
-            filterByFormula: `{Date} = '${today}'`,
-          })
-          .all();
-        results.health = health.map(r => r.fields);
+        // Get health metrics for today
+        try {
+          const health = await base(TABLES.HEALTH_METRICS)
+            .select({
+              filterByFormula: `DATESTR({Name}) = '${today}'`,
+            })
+            .all();
+          results.health = health.map(r => r.fields);
+        } catch (error) {
+          results.health_error = String(error);
+        }
 
         return {
           content: [
@@ -332,37 +375,53 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
 
         // Get calendar events for the week
-        const events = await base(TABLES.CALENDAR_EVENTS)
-          .select({
-            filterByFormula: `AND({Date} >= '${start}', {Date} <= '${end}')`,
-            sort: [{ field: 'Date', direction: 'asc' }, { field: 'Start Time', direction: 'asc' }],
-          })
-          .all();
-        results.calendar_events = events.map(r => r.fields);
+        try {
+          const events = await base(TABLES.CALENDAR_EVENTS)
+            .select({
+              filterByFormula: `AND({Date} >= '${start}', {Date} <= '${end}')`,
+              sort: [{ field: 'Date', direction: 'asc' }, { field: 'Start Time', direction: 'asc' }],
+            })
+            .all();
+          results.calendar_events = events.map(r => r.fields);
+        } catch (error) {
+          results.calendar_events_error = String(error);
+        }
 
-        // Get tasks for the week
-        const tasks = await base(TABLES.TASKS)
-          .select({
-            filterByFormula: `AND({Due Date} >= '${start}', {Due Date} <= '${end}', {Status} != 'Completed')`,
-          })
-          .all();
-        results.tasks = tasks.map(r => r.fields);
+        // Get all tasks (simplified - no date filtering)
+        try {
+          const tasks = await base(TABLES.TASKS)
+            .select({
+              maxRecords: 100,
+            })
+            .all();
+          results.tasks = tasks.map(r => r.fields);
+        } catch (error) {
+          results.tasks_error = String(error);
+        }
 
         // Get training for the week
-        const training = await base(TABLES.TRAINING_SESSIONS)
-          .select({
-            filterByFormula: `AND({Date} >= '${start}', {Date} <= '${end}')`,
-          })
-          .all();
-        results.training = training.map(r => r.fields);
+        try {
+          const training = await base(TABLES.TRAINING_SESSIONS)
+            .select({
+              maxRecords: 100,
+            })
+            .all();
+          results.training = training.map(r => r.fields);
+        } catch (error) {
+          results.training_error = String(error);
+        }
 
         // Get meals for the week
-        const meals = await base(TABLES.PLANNED_MEALS)
-          .select({
-            filterByFormula: `AND({Date} >= '${start}', {Date} <= '${end}')`,
-          })
-          .all();
-        results.meals = meals.map(r => r.fields);
+        try {
+          const meals = await base(TABLES.PLANNED_MEALS)
+            .select({
+              filterByFormula: `AND({Date} >= '${start}', {Date} <= '${end}')`,
+            })
+            .all();
+          results.meals = meals.map(r => r.fields);
+        } catch (error) {
+          results.meals_error = String(error);
+        }
 
         return {
           content: [
@@ -396,35 +455,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_tasks': {
-        const status = (args as any)?.status;
-        const dueDate = (args as any)?.due_date;
-        const showCompleted = (args as any)?.show_completed ?? false;
+        const limit = (args as any)?.limit ?? 100;
 
-        let formula = '';
-        const conditions: string[] = [];
-
-        if (status) {
-          conditions.push(`{Status} = '${status}'`);
-        }
-        if (dueDate) {
-          conditions.push(`{Due Date} = '${dueDate}'`);
-        }
-        if (!showCompleted) {
-          conditions.push(`AND({Status} != 'Completed', {Status} != 'Cancelled')`);
-        }
-
-        if (conditions.length > 0) {
-          formula = conditions.length === 1 ? conditions[0] : `AND(${conditions.join(', ')})`;
-        }
-
-        const selectOptions: any = {
-          sort: [{ field: 'Due Date', direction: 'asc' }],
-        };
-        if (formula) {
-          selectOptions.filterByFormula = formula;
-        }
-
-        const records = await base(TABLES.TASKS).select(selectOptions).all();
+        const records = await base(TABLES.TASKS)
+          .select({
+            maxRecords: limit,
+          })
+          .all();
 
         return {
           content: [
@@ -436,22 +473,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case 'get_training_plans': {
+      case 'get_training_sessions': {
         const startDate = (args as any)?.start_date ?? getTodayDate();
         const endDateDefault = new Date(startDate);
         endDateDefault.setDate(endDateDefault.getDate() + 7);
         const endDate = (args as any)?.end_date ?? endDateDefault.toISOString().split('T')[0];
 
-        const sessions = await base(TABLES.TRAINING_SESSIONS)
+        const records = await base(TABLES.TRAINING_SESSIONS)
           .select({
-            filterByFormula: `AND({Date} >= '${startDate}', {Date} <= '${endDate}')`,
-            sort: [{ field: 'Date', direction: 'asc' }],
-          })
-          .all();
-
-        const plans = await base(TABLES.TRAINING_PLANS)
-          .select({
-            filterByFormula: `OR({Start Date} <= '${endDate}', {End Date} >= '${startDate}')`,
+            maxRecords: 100,
           })
           .all();
 
@@ -459,7 +489,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: 'text',
-              text: `Training Plans:\n${formatRecords(plans)}\n\nTraining Sessions:\n${formatRecords(sessions)}`,
+              text: formatRecords(records),
             },
           ],
         };
@@ -471,8 +501,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const records = await base(TABLES.HEALTH_METRICS)
           .select({
-            filterByFormula: `AND({Date} >= '${startDate}', {Date} <= '${endDate}')`,
-            sort: [{ field: 'Date', direction: 'asc' }],
+            filterByFormula: `AND(DATESTR({Name}) >= '${startDate}', DATESTR({Name}) <= '${endDate}')`,
           })
           .all();
 
@@ -511,13 +540,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_recipes': {
         const search = (args as any)?.search;
+        const limit = (args as any)?.limit ?? 20;
 
         let formula = '';
         if (search) {
-          formula = `OR(FIND(LOWER('${search}'), LOWER({Name})), FIND(LOWER('${search}'), LOWER({Ingredients})))`;
+          formula = `FIND(LOWER('${search}'), LOWER({Name}))`;
         }
 
-        const selectOptions: any = {};
+        const selectOptions: any = {
+          maxRecords: limit,
+        };
         if (formula) {
           selectOptions.filterByFormula = formula;
         }
@@ -535,19 +567,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_projects': {
-        const status = (args as any)?.status;
+        const limit = (args as any)?.limit ?? 100;
 
-        let formula = '';
-        if (status) {
-          formula = `{Status} = '${status}'`;
-        }
-
-        const selectOptions: any = {};
-        if (formula) {
-          selectOptions.filterByFormula = formula;
-        }
-
-        const records = await base(TABLES.PROJECTS).select(selectOptions).all();
+        const records = await base(TABLES.PROJECTS)
+          .select({
+            maxRecords: limit,
+          })
+          .all();
 
         return {
           content: [

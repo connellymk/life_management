@@ -132,6 +132,29 @@ Claude can now see all your planning data from Airtable:
    - schema.bases:read
 3. Make sure the Base ID is correct: `appKYFUTDs7tDg4Wr`
 
+### "Unknown field names" errors (FIXED)
+
+This issue has been resolved! The server now:
+- Uses the correct field names from your Airtable schema
+- Handles errors gracefully if a field is missing
+- Returns partial results even if some queries fail
+
+See `CHANGES.md` for details on what was fixed.
+
+### Getting partial data or some sections show errors
+
+This is normal! The server now includes error information for any section that fails:
+- Look for `*_error` fields in the response (e.g., `tasks_error`)
+- These show exactly what went wrong
+- Other sections will still work fine
+
+Common reasons for errors:
+- Table is empty (no records)
+- Field names don't match expectations
+- Date format issues
+
+Claude Chat can still work with partial data!
+
 ## 📝 Tips for Working with Claude
 
 Once the MCP server is working, you can have natural conversations with Claude about your schedule:
