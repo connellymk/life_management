@@ -329,6 +329,304 @@ const tools: Tool[] = [
       properties: {},
     },
   },
+  {
+    name: 'create_task',
+    description: 'Create a new task',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Task name (required)',
+        },
+        category: {
+          type: 'string',
+          description: 'Task category',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'update_task',
+    description: 'Update an existing task by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+        name: {
+          type: 'string',
+          description: 'Task name',
+        },
+        category: {
+          type: 'string',
+          description: 'Task category',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'delete_task',
+    description: 'Delete a task by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'create_planned_meal',
+    description: 'Create a new planned meal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Meal name (required)',
+        },
+        date: {
+          type: 'string',
+          description: 'Date in YYYY-MM-DD format (required)',
+        },
+        meal_type: {
+          type: 'string',
+          description: 'Type of meal: Breakfast, Lunch, Dinner, Snack',
+        },
+        recipe_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of recipe record IDs to link',
+        },
+        servings: {
+          type: 'number',
+          description: 'Number of servings',
+        },
+        status: {
+          type: 'string',
+          description: 'Status: Planned, Prepared, Eaten',
+        },
+        notes: {
+          type: 'string',
+          description: 'Additional notes',
+        },
+      },
+      required: ['name', 'date'],
+    },
+  },
+  {
+    name: 'update_planned_meal',
+    description: 'Update an existing planned meal by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+        name: {
+          type: 'string',
+          description: 'Meal name',
+        },
+        date: {
+          type: 'string',
+          description: 'Date in YYYY-MM-DD format',
+        },
+        meal_type: {
+          type: 'string',
+          description: 'Type of meal: Breakfast, Lunch, Dinner, Snack',
+        },
+        recipe_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of recipe record IDs to link',
+        },
+        servings: {
+          type: 'number',
+          description: 'Number of servings',
+        },
+        status: {
+          type: 'string',
+          description: 'Status: Planned, Prepared, Eaten',
+        },
+        notes: {
+          type: 'string',
+          description: 'Additional notes',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'delete_planned_meal',
+    description: 'Delete a planned meal by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'create_calendar_event',
+    description: 'Create a new calendar event',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Event name (required)',
+        },
+        date: {
+          type: 'string',
+          description: 'Date in YYYY-MM-DD format (required)',
+        },
+        start_time: {
+          type: 'string',
+          description: 'Start time in ISO 8601 format',
+        },
+        end_time: {
+          type: 'string',
+          description: 'End time in ISO 8601 format',
+        },
+        location: {
+          type: 'string',
+          description: 'Event location',
+        },
+        description: {
+          type: 'string',
+          description: 'Event description',
+        },
+        calendar: {
+          type: 'string',
+          description: 'Calendar name: Personal, School and Research, etc.',
+        },
+        all_day: {
+          type: 'boolean',
+          description: 'Is this an all-day event?',
+        },
+      },
+      required: ['name', 'date'],
+    },
+  },
+  {
+    name: 'update_calendar_event',
+    description: 'Update an existing calendar event by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+        name: {
+          type: 'string',
+          description: 'Event name',
+        },
+        date: {
+          type: 'string',
+          description: 'Date in YYYY-MM-DD format',
+        },
+        start_time: {
+          type: 'string',
+          description: 'Start time in ISO 8601 format',
+        },
+        end_time: {
+          type: 'string',
+          description: 'End time in ISO 8601 format',
+        },
+        location: {
+          type: 'string',
+          description: 'Event location',
+        },
+        description: {
+          type: 'string',
+          description: 'Event description',
+        },
+        calendar: {
+          type: 'string',
+          description: 'Calendar name',
+        },
+        all_day: {
+          type: 'boolean',
+          description: 'Is this an all-day event?',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'delete_calendar_event',
+    description: 'Delete a calendar event by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'create_recipe',
+    description: 'Create a new recipe',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Recipe name (required)',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'update_recipe',
+    description: 'Update an existing recipe by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+        name: {
+          type: 'string',
+          description: 'Recipe name',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
+  {
+    name: 'delete_recipe',
+    description: 'Delete a recipe by record ID',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        record_id: {
+          type: 'string',
+          description: 'Airtable record ID (required)',
+        },
+      },
+      required: ['record_id'],
+    },
+  },
 ];
 
 // Handle list tools request
@@ -879,6 +1177,272 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: formatRecords(records),
+            },
+          ],
+        };
+      }
+
+      // CREATE operations
+      case 'create_task': {
+        const fields: any = {
+          Name: (args as any).name,
+        };
+
+        if ((args as any).category) {
+          fields.Category = (args as any).category;
+        }
+
+        const createdRecords = await base(TABLES.TASKS).create([fields]);
+        const createdRecord = createdRecords[0];
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Task created successfully!\nRecord ID: ${createdRecord.id}\n${JSON.stringify(createdRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      case 'create_planned_meal': {
+        const fields: any = {
+          Name: (args as any).name,
+          Date: (args as any).date,
+        };
+
+        if ((args as any).meal_type) fields['Meal Type'] = (args as any).meal_type;
+        if ((args as any).recipe_ids) fields.Recipe = (args as any).recipe_ids;
+        if ((args as any).servings) fields.Servings = (args as any).servings;
+        if ((args as any).status) fields.Status = (args as any).status;
+        if ((args as any).notes) fields.Notes = (args as any).notes;
+
+        // Try to link to Day record if it exists
+        const dayRecordId = await getDayRecordId((args as any).date);
+        if (dayRecordId) {
+          fields.Day = [dayRecordId];
+        }
+
+        const createdRecords = await base(TABLES.PLANNED_MEALS).create([fields]);
+        const createdRecord = createdRecords[0];
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Planned meal created successfully!\nRecord ID: ${createdRecord.id}\n${JSON.stringify(createdRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      case 'create_calendar_event': {
+        const fields: any = {
+          Name: (args as any).name,
+          Date: (args as any).date,
+          Title: (args as any).name, // Title is often same as Name
+        };
+
+        if ((args as any).start_time) fields['Start Time'] = (args as any).start_time;
+        if ((args as any).end_time) fields['End Time'] = (args as any).end_time;
+        if ((args as any).location) fields.Location = (args as any).location;
+        if ((args as any).description) fields.Description = (args as any).description;
+        if ((args as any).calendar) fields.Calendar = (args as any).calendar;
+        if ((args as any).all_day !== undefined) fields['All Day'] = (args as any).all_day;
+
+        // Try to link to Day record if it exists
+        const dayRecordId = await getDayRecordId((args as any).date);
+        if (dayRecordId) {
+          fields.Day = [dayRecordId];
+        }
+
+        const createdRecords = await base(TABLES.CALENDAR_EVENTS).create([fields]);
+        const createdRecord = createdRecords[0];
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Calendar event created successfully!\nRecord ID: ${createdRecord.id}\n${JSON.stringify(createdRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      case 'create_recipe': {
+        const fields: any = {
+          Name: (args as any).name,
+        };
+
+        const createdRecords = await base(TABLES.RECIPES).create([fields]);
+        const createdRecord = createdRecords[0];
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Recipe created successfully!\nRecord ID: ${createdRecord.id}\n${JSON.stringify(createdRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      // UPDATE operations
+      case 'update_task': {
+        const recordId = (args as any).record_id;
+        const fields: any = {};
+
+        if ((args as any).name) fields.Name = (args as any).name;
+        if ((args as any).category) fields.Category = (args as any).category;
+
+        const updatedRecord = await base(TABLES.TASKS).update(recordId, fields);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Task updated successfully!\nRecord ID: ${updatedRecord.id}\n${JSON.stringify(updatedRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      case 'update_planned_meal': {
+        const recordId = (args as any).record_id;
+        const fields: any = {};
+
+        if ((args as any).name) fields.Name = (args as any).name;
+        if ((args as any).date) {
+          fields.Date = (args as any).date;
+          // Try to update Day link
+          const dayRecordId = await getDayRecordId((args as any).date);
+          if (dayRecordId) {
+            fields.Day = [dayRecordId];
+          }
+        }
+        if ((args as any).meal_type) fields['Meal Type'] = (args as any).meal_type;
+        if ((args as any).recipe_ids) fields.Recipe = (args as any).recipe_ids;
+        if ((args as any).servings !== undefined) fields.Servings = (args as any).servings;
+        if ((args as any).status) fields.Status = (args as any).status;
+        if ((args as any).notes) fields.Notes = (args as any).notes;
+
+        const updatedRecord = await base(TABLES.PLANNED_MEALS).update(recordId, fields);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Planned meal updated successfully!\nRecord ID: ${updatedRecord.id}\n${JSON.stringify(updatedRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      case 'update_calendar_event': {
+        const recordId = (args as any).record_id;
+        const fields: any = {};
+
+        if ((args as any).name) {
+          fields.Name = (args as any).name;
+          fields.Title = (args as any).name;
+        }
+        if ((args as any).date) {
+          fields.Date = (args as any).date;
+          // Try to update Day link
+          const dayRecordId = await getDayRecordId((args as any).date);
+          if (dayRecordId) {
+            fields.Day = [dayRecordId];
+          }
+        }
+        if ((args as any).start_time) fields['Start Time'] = (args as any).start_time;
+        if ((args as any).end_time) fields['End Time'] = (args as any).end_time;
+        if ((args as any).location) fields.Location = (args as any).location;
+        if ((args as any).description) fields.Description = (args as any).description;
+        if ((args as any).calendar) fields.Calendar = (args as any).calendar;
+        if ((args as any).all_day !== undefined) fields['All Day'] = (args as any).all_day;
+
+        const updatedRecord = await base(TABLES.CALENDAR_EVENTS).update(recordId, fields);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Calendar event updated successfully!\nRecord ID: ${updatedRecord.id}\n${JSON.stringify(updatedRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      case 'update_recipe': {
+        const recordId = (args as any).record_id;
+        const fields: any = {};
+
+        if ((args as any).name) fields.Name = (args as any).name;
+
+        const updatedRecord = await base(TABLES.RECIPES).update(recordId, fields);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Recipe updated successfully!\nRecord ID: ${updatedRecord.id}\n${JSON.stringify(updatedRecord.fields, null, 2)}`,
+            },
+          ],
+        };
+      }
+
+      // DELETE operations
+      case 'delete_task': {
+        const recordId = (args as any).record_id;
+        await base(TABLES.TASKS).destroy(recordId);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Task deleted successfully!\nRecord ID: ${recordId}`,
+            },
+          ],
+        };
+      }
+
+      case 'delete_planned_meal': {
+        const recordId = (args as any).record_id;
+        await base(TABLES.PLANNED_MEALS).destroy(recordId);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Planned meal deleted successfully!\nRecord ID: ${recordId}`,
+            },
+          ],
+        };
+      }
+
+      case 'delete_calendar_event': {
+        const recordId = (args as any).record_id;
+        await base(TABLES.CALENDAR_EVENTS).destroy(recordId);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Calendar event deleted successfully!\nRecord ID: ${recordId}`,
+            },
+          ],
+        };
+      }
+
+      case 'delete_recipe': {
+        const recordId = (args as any).record_id;
+        await base(TABLES.RECIPES).destroy(recordId);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Recipe deleted successfully!\nRecord ID: ${recordId}`,
             },
           ],
         };
