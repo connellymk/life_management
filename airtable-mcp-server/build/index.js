@@ -602,6 +602,33 @@ const tools = [
             required: ['record_id'],
         },
     },
+    {
+        name: 'inspect_table_schema',
+        description: 'Inspect the schema of any table to discover field names and sample data. Useful for understanding table structure or detecting schema changes.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                table_name: {
+                    type: 'string',
+                    description: 'Name of the table to inspect (e.g., "Tasks", "Calendar Events", "Planned Meals")',
+                },
+                max_records: {
+                    type: 'number',
+                    description: 'Maximum number of sample records to retrieve (default: 5)',
+                    default: 5,
+                },
+            },
+            required: ['table_name'],
+        },
+    },
+    {
+        name: 'list_all_tables',
+        description: 'List all available tables in the Airtable base with their current table names',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+        },
+    },
 ];
 // Handle list tools request
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -1353,6 +1380,112 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: 'text',
                             text: `Recipe deleted successfully!\nRecord ID: ${recordId}`,
+                        },
+                    ],
+                };
+            }
+            // INTROSPECTION operations
+            case 'inspect_table_schema': {
+                const tableName = args.table_name;
+                const maxRecords = args.max_records || 5;
+                try {
+                    // Fetch sample records to analyze schema
+                    const records = await base(tableName)
+                        .select({
+                        maxRecords: maxRecords,
+                    })
+                        .all();
+                    if (records.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Table "${tableName}" exists but contains no records.\n\nTo discover schema, please add at least one record to this table in Airtable.`,
+                                },
+                            ],
+                        };
+                    }
+                    // Collect all unique field names from all records
+                    const allFields = new Set();
+                    const fieldTypes = {};
+                    records.forEach(record => {
+                        Object.keys(record.fields).forEach(fieldName => {
+                            allFields.add(fieldName);
+                            const value = record.fields[fieldName];
+                            const valueType = Array.isArray(value)
+                                ? `Array(${typeof value[0]})`
+                                : typeof value;
+                            if (!fieldTypes[fieldName]) {
+                                fieldTypes[fieldName] = new Set();
+                            }
+                            fieldTypes[fieldName].add(valueType);
+                        });
+                    });
+                    // Build schema report
+                    let schemaReport = `# Table Schema: ${tableName}\n\n`;
+                    schemaReport += `**Records Found:** ${records.length}\n`;
+                    schemaReport += `**Total Fields:** ${allFields.size}\n\n`;
+                    schemaReport += `## Field List\n\n`;
+                    schemaReport += `| Field Name | Type(s) | Sample Value |\n`;
+                    schemaReport += `|------------|---------|-------------|\n`;
+                    Array.from(allFields).sort().forEach(fieldName => {
+                        const types = Array.from(fieldTypes[fieldName]).join(', ');
+                        const sampleRecord = records.find(r => r.fields[fieldName] !== undefined);
+                        const sampleValue = sampleRecord ? JSON.stringify(sampleRecord.fields[fieldName]) : 'N/A';
+                        const truncatedSample = sampleValue.length > 50
+                            ? sampleValue.substring(0, 47) + '...'
+                            : sampleValue;
+                        schemaReport += `| ${fieldName} | ${types} | ${truncatedSample} |\n`;
+                    });
+                    schemaReport += `\n## Sample Records\n\n`;
+                    records.forEach((record, index) => {
+                        schemaReport += `### Record ${index + 1} (ID: ${record.id})\n`;
+                        schemaReport += '```json\n';
+                        schemaReport += JSON.stringify(record.fields, null, 2);
+                        schemaReport += '\n```\n\n';
+                    });
+                    schemaReport += `## Field Name Mapping for Code\n\n`;
+                    schemaReport += `Use these exact field names in create/update operations:\n\n`;
+                    schemaReport += '```typescript\n';
+                    Array.from(allFields).sort().forEach(fieldName => {
+                        const safeFieldName = fieldName.includes(' ') || fieldName.includes('-')
+                            ? `fields['${fieldName}']`
+                            : `fields.${fieldName}`;
+                        schemaReport += `${safeFieldName} = value;\n`;
+                    });
+                    schemaReport += '```\n';
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: schemaReport,
+                            },
+                        ],
+                    };
+                }
+                catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `Error inspecting table "${tableName}":\n${errorMessage}\n\nMake sure the table name is correct. Use list_all_tables to see available tables.`,
+                            },
+                        ],
+                        isError: true,
+                    };
+                }
+            }
+            case 'list_all_tables': {
+                const tablesList = Object.entries(TABLES)
+                    .map(([key, value]) => `- **${key}**: "${value}"`)
+                    .join('\n');
+                const report = `# Available Tables in Airtable Base\n\n${tablesList}\n\n## Usage\n\nTo inspect a table's schema, use:\n\`\`\`\ninspect_table_schema({ table_name: "Table Name Here" })\n\`\`\`\n\nFor example:\n\`\`\`\ninspect_table_schema({ table_name: "Tasks" })\ninspect_table_schema({ table_name: "Calendar Events" })\ninspect_table_schema({ table_name: "Planned Meals" })\n\`\`\``;
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: report,
                         },
                     ],
                 };
