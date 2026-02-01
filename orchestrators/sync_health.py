@@ -399,14 +399,18 @@ def main():
         # Initialize clients
         garmin = GarminSync()
 
+        # Initialize a shared Daily Tracking sync (serves as Day table for relations)
+        notion_tracking = NotionDailyTrackingSync()
+
         # Determine what to sync
         sync_all = not any([args.workouts_only, args.metrics_only, args.body_only])
 
-        # Sync workouts to Notion
+        # Sync workouts to Notion (with Day relation to Daily Tracking)
         workout_stats = {}
         if sync_all or args.workouts_only:
             state_manager = StateManager()
-            notion_activities = NotionActivitiesSync()
+            # Pass daily_tracking_sync to enable Day relations
+            notion_activities = NotionActivitiesSync(daily_tracking_sync=notion_tracking)
             workout_stats = sync_workouts(
                 garmin, notion_activities, state_manager,
                 dry_run=args.dry_run,
@@ -417,7 +421,6 @@ def main():
         # Sync daily metrics to Notion
         metrics_stats = {}
         if sync_all or args.metrics_only:
-            notion_tracking = NotionDailyTrackingSync()
             metrics_stats = sync_daily_metrics(
                 garmin, notion_tracking,
                 dry_run=args.dry_run,
@@ -428,7 +431,6 @@ def main():
         # Sync body metrics to Notion
         body_stats = {}
         if sync_all or args.body_only:
-            notion_tracking = NotionDailyTrackingSync()
             body_stats = sync_body_metrics(
                 garmin, notion_tracking,
                 dry_run=args.dry_run,

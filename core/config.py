@@ -22,9 +22,10 @@ class Config:
 
     # Notion Database IDs
     NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "2e890d86-c150-801e-87d3-000b40a2b7f7")
-    NOTION_DAY_DB_ID = os.getenv("NOTION_DAY_DB_ID", "2eb90d86-c150-8045-ba28-000b1ba25a15")
     NOTION_WORKOUTS_DB_ID = os.getenv("NOTION_WORKOUTS_DB_ID", "")
     NOTION_DAILY_TRACKING_DB_ID = os.getenv("NOTION_DAILY_TRACKING_DB_ID", "")
+    # Daily Tracking doubles as the Day dimension table for cross-database relations
+    NOTION_DAY_DB_ID = os.getenv("NOTION_DAILY_TRACKING_DB_ID", "")
 
     # Google Calendar
     GOOGLE_CALENDAR_IDS = os.getenv("GOOGLE_CALENDAR_IDS", "primary").split(",")

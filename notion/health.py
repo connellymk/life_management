@@ -4,6 +4,9 @@ Notion Health data sync operations.
 This module handles syncing Garmin health data to Notion:
 - Garmin Activities (workouts/activities)
 - Daily Tracking (daily health data + body metrics combined)
+
+Daily Tracking also serves as the central "Day" database for cross-database
+relations (Calendar Events, Garmin Activities, Training Plans, etc.)
 """
 
 from datetime import datetime, timezone
@@ -86,17 +89,21 @@ class NotionHealthSync:
 class NotionActivitiesSync(NotionHealthSync):
     """Sync Garmin activities to Notion Garmin Activities database."""
 
-    def __init__(self, token: str = None):
+    def __init__(self, token: str = None, daily_tracking_sync: 'NotionDailyTrackingSync' = None):
         """
         Initialize activities sync.
 
         Args:
             token: Notion API token
+            daily_tracking_sync: Optional NotionDailyTrackingSync instance for Day relations
         """
         super().__init__(token)
         self.database_id = Config.NOTION_WORKOUTS_DB_ID
         if not self.database_id:
             raise ValueError("NOTION_WORKOUTS_DB_ID not set in config")
+
+        # Store reference for Day relations
+        self._daily_tracking_sync = daily_tracking_sync
 
     def get_activity_by_external_id(self, external_id: str) -> Optional[Dict]:
         """
@@ -172,7 +179,7 @@ class NotionActivitiesSync(NotionHealthSync):
             }
         }
 
-        # Add date
+        # Add date and Day relation
         start_time = activity_data.get('start_time')
         if start_time:
             if isinstance(start_time, str):
@@ -180,6 +187,15 @@ class NotionActivitiesSync(NotionHealthSync):
             properties["Date"] = {
                 "date": {"start": self._format_datetime_for_notion(start_time)}
             }
+
+            # Link to Daily Tracking (Day) record
+            if self._daily_tracking_sync:
+                date_str = start_time.strftime('%Y-%m-%d')
+                day_page_id = self._daily_tracking_sync.get_day_page_id(date_str, create_if_missing=True)
+                if day_page_id:
+                    properties["Day"] = {
+                        "relation": [{"id": day_page_id}]
+                    }
 
         # Add numeric fields
         if activity_data.get('duration_minutes') is not None:
@@ -265,6 +281,15 @@ class NotionActivitiesSync(NotionHealthSync):
                 "date": {"start": self._format_datetime_for_notion(start_time)}
             }
 
+            # Update Day relation
+            if self._daily_tracking_sync:
+                date_str = start_time.strftime('%Y-%m-%d')
+                day_page_id = self._daily_tracking_sync.get_day_page_id(date_str, create_if_missing=True)
+                if day_page_id:
+                    properties["Day"] = {
+                        "relation": [{"id": day_page_id}]
+                    }
+
         if activity_data.get('duration_minutes') is not None:
             properties["Duration"] = {"number": round(activity_data['duration_minutes'], 1)}
 
@@ -334,7 +359,8 @@ class NotionDailyTrackingSync(NotionHealthSync):
     Sync daily metrics and body metrics to Notion Daily Tracking database.
 
     This database combines daily health metrics and body composition data
-    into a single record per day.
+    into a single record per day. It also serves as the central "Day"
+    dimension table for cross-database relations.
     """
 
     def __init__(self, token: str = None):
@@ -348,6 +374,9 @@ class NotionDailyTrackingSync(NotionHealthSync):
         self.database_id = Config.NOTION_DAILY_TRACKING_DB_ID
         if not self.database_id:
             raise ValueError("NOTION_DAILY_TRACKING_DB_ID not set in config")
+
+        # Cache for Day page IDs to avoid repeated lookups
+        self._day_cache: Dict[str, str] = {}
 
     def get_tracking_by_date(self, date_str: str) -> Optional[Dict]:
         """
@@ -382,6 +411,60 @@ class NotionDailyTrackingSync(NotionHealthSync):
             logger.error(f"Error finding tracking record for {date_str}: {e}")
 
         return None
+
+    def get_day_page_id(self, date_str: str, create_if_missing: bool = True) -> Optional[str]:
+        """
+        Get the Notion page ID for a given date's Daily Tracking record.
+
+        This method is used by other modules (Calendar, Activities) to create
+        relations to the Daily Tracking database.
+
+        Args:
+            date_str: Date in YYYY-MM-DD format
+            create_if_missing: If True, create a new record if none exists
+
+        Returns:
+            Page ID if found/created, None otherwise
+        """
+        # Check cache first
+        if date_str in self._day_cache:
+            return self._day_cache[date_str]
+
+        # Look up existing record
+        existing = self.get_tracking_by_date(date_str)
+
+        if existing:
+            page_id = existing['id']
+            self._day_cache[date_str] = page_id
+            return page_id
+
+        if not create_if_missing:
+            return None
+
+        # Create a minimal Day record
+        logger.info(f"Creating Daily Tracking record for {date_str}")
+        properties = {
+            "Name": {
+                "title": [{"text": {"content": date_str}}]
+            },
+            "Date": {
+                "date": {"start": date_str}
+            }
+        }
+
+        page_data = {
+            "parent": {"database_id": self.database_id},
+            "properties": properties
+        }
+
+        try:
+            result = self._make_request("POST", "/pages", page_data)
+            page_id = result['id']
+            self._day_cache[date_str] = page_id
+            return page_id
+        except Exception as e:
+            logger.error(f"Error creating Day record for {date_str}: {e}")
+            return None
 
     def create_or_update_tracking(self, tracking_data: Dict) -> Dict:
         """

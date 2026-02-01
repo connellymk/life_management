@@ -22,6 +22,7 @@ from core.utils import logger, format_duration
 from core.state_manager import StateManager
 from integrations.google_calendar.sync import GoogleCalendarSync
 from notion.calendar import NotionCalendarSync
+from notion.health import NotionDailyTrackingSync
 
 
 def sync_google_calendars(
@@ -258,7 +259,14 @@ For more information, see README.md and MIGRATION_GUIDE.md
             notion = NotionCalendarSync()
             # Simple test: try to get an event (empty query is fine)
             notion.get_event_by_external_id("__health_check_test__")
-            logger.info("Notion connection: ✓")
+            logger.info("Notion Calendar DB: ✓")
+
+            # Check Daily Tracking connection for Day relations
+            if Config.NOTION_DAILY_TRACKING_DB_ID:
+                tracking = NotionDailyTrackingSync()
+                logger.info("Notion Daily Tracking DB: ✓ (Day relations enabled)")
+            else:
+                logger.info("Notion Daily Tracking DB: Not configured (Day relations disabled)")
         except Exception as e:
             logger.error(f"Notion connection: ✗ ({e})")
             return 1
@@ -288,10 +296,20 @@ For more information, see README.md and MIGRATION_GUIDE.md
         logger.error(f"Failed to initialize state manager: {e}")
         return 1
 
-    # Initialize Notion sync
+    # Initialize Daily Tracking sync (for Day relations)
+    daily_tracking_sync = None
     try:
-        notion_sync = NotionCalendarSync()
-        logger.info("✓ Initialized Notion sync")
+        if Config.NOTION_DAILY_TRACKING_DB_ID:
+            daily_tracking_sync = NotionDailyTrackingSync()
+            logger.info("✓ Initialized Daily Tracking sync (for Day relations)")
+    except Exception as e:
+        logger.warning(f"Could not initialize Daily Tracking sync: {e}")
+        logger.info("  Calendar events will sync without Day relations")
+
+    # Initialize Notion calendar sync
+    try:
+        notion_sync = NotionCalendarSync(daily_tracking_sync=daily_tracking_sync)
+        logger.info("✓ Initialized Notion calendar sync")
     except Exception as e:
         logger.error(f"Failed to initialize Notion sync: {e}")
         return 1

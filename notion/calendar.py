@@ -2,16 +2,19 @@
 Notion Calendar Events sync operations.
 
 This module handles syncing Google Calendar events to Notion,
-linking each event to the appropriate Day record via the By Day relation.
+linking each event to the appropriate Daily Tracking record via the Day relation.
 """
 
 from datetime import datetime, timezone
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, TYPE_CHECKING
 import logging
 import pytz
 import requests
 
 from core.config import Config
+
+if TYPE_CHECKING:
+    from notion.health import NotionDailyTrackingSync
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +29,13 @@ NOTION_VERSION = "2022-06-28"
 class NotionCalendarSync:
     """Sync calendar events to Notion."""
 
-    def __init__(self, token: str = None):
+    def __init__(self, token: str = None, daily_tracking_sync: 'NotionDailyTrackingSync' = None):
         """
         Initialize Notion calendar sync.
 
         Args:
             token: Notion API token (uses Config.NOTION_TOKEN if not provided)
+            daily_tracking_sync: Optional NotionDailyTrackingSync instance for Day relations
         """
         self.token = token or Config.NOTION_TOKEN
         if not self.token:
@@ -39,7 +43,6 @@ class NotionCalendarSync:
 
         # Data source IDs from config
         self.data_source_id = Config.NOTION_CALENDAR_DB_ID
-        self.day_data_source_id = Config.NOTION_DAY_DB_ID
 
         self.headers = {
             "Authorization": f"Bearer {self.token}",
@@ -47,8 +50,8 @@ class NotionCalendarSync:
             "Notion-Version": NOTION_VERSION,
         }
 
-        # Cache for Day page URLs to avoid repeated lookups
-        self._day_cache: Dict[str, str] = {}
+        # Store reference for Day relations (uses Daily Tracking as Day table)
+        self._daily_tracking_sync = daily_tracking_sync
 
     def _make_request(
         self,
@@ -82,55 +85,27 @@ class NotionCalendarSync:
 
         return response.json()
 
-    def _get_day_page_url(self, date_obj: datetime) -> Optional[str]:
+    def _get_day_page_id(self, date_obj: datetime) -> Optional[str]:
         """
-        Get the Day page URL for a given date.
+        Get the Day (Daily Tracking) page ID for a given date.
 
-        The By Day relation expects page URLs in format like:
-        https://www.notion.so/Page-Title-uuid
+        Uses the NotionDailyTrackingSync to look up or create the Day record.
 
         Args:
             date_obj: datetime object (should be in Mountain Time)
 
         Returns:
-            Page URL for the Day record, or None if not found
+            Page ID for the Day record, or None if not available
         """
-        # Format date as ISO string for querying
+        if not self._daily_tracking_sync:
+            logger.debug("No daily_tracking_sync provided, skipping Day relation")
+            return None
+
+        # Format date as ISO string
         iso_date = date_obj.strftime('%Y-%m-%d')
 
-        # Check cache first
-        if iso_date in self._day_cache:
-            return self._day_cache[iso_date]
-
-        # Query the Day database for the matching date
-        # The Day field in Notion is a date property
-        try:
-            response = self._make_request(
-                "POST",
-                f"/databases/{self.day_data_source_id}/query",
-                {
-                    "filter": {
-                        "property": "Day",
-                        "date": {
-                            "equals": iso_date
-                        }
-                    },
-                    "page_size": 1
-                }
-            )
-
-            results = response.get("results", [])
-            if results:
-                page_id = results[0]["id"]
-                page_url = results[0]["url"]
-                self._day_cache[iso_date] = page_url
-                logger.debug(f"Found Day page for {iso_date}: {page_url}")
-                return page_url
-
-        except Exception as e:
-            logger.warning(f"Could not find Day page for {iso_date}: {e}")
-
-        return None
+        # Use the Daily Tracking sync to get or create the Day page
+        return self._daily_tracking_sync.get_day_page_id(iso_date, create_if_missing=True)
 
     def _format_datetime_for_notion(self, dt: datetime) -> str:
         """
@@ -362,11 +337,11 @@ class NotionCalendarSync:
         if event_data.get('URL'):
             properties["userDefined:URL"] = {"url": event_data['URL']}
 
-        # Link to Day record
-        day_url = self._get_day_page_url(start_time_mt)
-        if day_url:
-            properties["By Day"] = {
-                "relation": [{"id": day_url.split('-')[-1].replace('/', '')}]
+        # Link to Daily Tracking record
+        day_page_id = self._get_day_page_id(start_time_mt)
+        if day_page_id:
+            properties["Daily Tracking"] = {
+                "relation": [{"id": day_page_id}]
             }
 
         # Create the page
@@ -419,11 +394,11 @@ class NotionCalendarSync:
                     "date": {"start": self._format_datetime_for_notion(start_time)}
                 }
 
-            # Update Day link
-            day_url = self._get_day_page_url(start_time_mt)
-            if day_url:
-                properties["By Day"] = {
-                    "relation": [{"id": day_url.split('-')[-1].replace('/', '')}]
+            # Update Daily Tracking relation
+            day_page_id = self._get_day_page_id(start_time_mt)
+            if day_page_id:
+                properties["Daily Tracking"] = {
+                    "relation": [{"id": day_page_id}]
                 }
 
         # Handle end time

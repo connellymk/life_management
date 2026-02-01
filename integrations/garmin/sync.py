@@ -203,12 +203,21 @@ class GarminSync:
             if not start_time and hasattr(activity, 'summary') and activity.summary:
                 start_time = activity.summary.start_time_local
 
-            # Duration (seconds)
-            duration_seconds = activity.duration or 0
+            # Get summary for fallback values
+            summary = activity.summary if hasattr(activity, 'summary') else None
+
+            # Duration (seconds) - fall back to summary if None
+            duration_seconds = activity.duration
+            if duration_seconds is None and summary:
+                duration_seconds = getattr(summary, 'duration', None) or getattr(summary, 'elapsed_duration', None)
+            duration_seconds = duration_seconds or 0
             duration_minutes = duration_seconds / 60 if duration_seconds else 0
 
-            # Distance (convert based on unit system)
-            distance_meters = activity.distance or 0
+            # Distance (convert based on unit system) - fall back to summary if None
+            distance_meters = activity.distance
+            if distance_meters is None and summary:
+                distance_meters = getattr(summary, 'distance', None)
+            distance_meters = distance_meters or 0
             if self.unit_system == "imperial":
                 distance = convert_meters_to_miles(distance_meters)
                 distance_unit = "mi"
@@ -216,8 +225,11 @@ class GarminSync:
                 distance = distance_meters / 1000  # km
                 distance_unit = "km"
 
-            # Elevation (convert based on unit system)
-            elevation_meters = activity.elevation_gain or 0
+            # Elevation (convert based on unit system) - fall back to summary if None
+            elevation_meters = activity.elevation_gain
+            if elevation_meters is None and summary:
+                elevation_meters = getattr(summary, 'elevation_gain', None)
+            elevation_meters = elevation_meters or 0
             if self.unit_system == "imperial":
                 elevation = convert_meters_to_feet(elevation_meters)
                 elevation_unit = "ft"
@@ -225,15 +237,23 @@ class GarminSync:
                 elevation = elevation_meters
                 elevation_unit = "m"
 
-            # Heart rate
+            # Heart rate - fall back to summary if None
             avg_hr = activity.average_hr
+            if avg_hr is None and summary:
+                avg_hr = getattr(summary, 'average_hr', None) or getattr(summary, 'average_heart_rate', None)
             max_hr = activity.max_hr
+            if max_hr is None and summary:
+                max_hr = getattr(summary, 'max_hr', None) or getattr(summary, 'max_heart_rate', None)
 
-            # Calories
+            # Calories - fall back to summary if None
             calories = activity.calories
+            if calories is None and summary:
+                calories = getattr(summary, 'calories', None) or getattr(summary, 'active_calories', None)
 
-            # Pace/speed
+            # Pace/speed - fall back to summary if None
             avg_speed_mps = activity.average_speed  # meters per second
+            if avg_speed_mps is None and summary:
+                avg_speed_mps = getattr(summary, 'average_speed', None) or getattr(summary, 'average_moving_speed', None)
             pace = None
             speed = None
             if avg_speed_mps and avg_speed_mps > 0:
