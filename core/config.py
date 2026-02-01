@@ -20,41 +20,11 @@ class Config:
     # Notion (shared across all integrations)
     NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
 
-    # Airtable (shared across all integrations)
-    # Personal Access Token (recommended) - get from https://airtable.com/create/tokens
-    AIRTABLE_ACCESS_TOKEN = os.getenv("AIRTABLE_ACCESS_TOKEN", "")
-    # Legacy API Key support (deprecated by Airtable)
-    AIRTABLE_API_KEY = os.getenv("AIRTABLE_API_KEY", "")
-    AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID", "")
-
     # Notion Database IDs
     NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "2e890d86-c150-801e-87d3-000b40a2b7f7")
     NOTION_DAY_DB_ID = os.getenv("NOTION_DAY_DB_ID", "2eb90d86-c150-8045-ba28-000b1ba25a15")
     NOTION_WORKOUTS_DB_ID = os.getenv("NOTION_WORKOUTS_DB_ID", "")
     NOTION_DAILY_TRACKING_DB_ID = os.getenv("NOTION_DAILY_TRACKING_DB_ID", "")
-
-    # Airtable Table Names (Dimension Tables)
-    AIRTABLE_DAY = os.getenv("AIRTABLE_DAY", "Day")
-    AIRTABLE_WEEK = os.getenv("AIRTABLE_WEEK", "Week")
-
-    # Airtable Table Names (Data Tables)
-    AIRTABLE_CALENDAR_EVENTS = os.getenv("AIRTABLE_CALENDAR_EVENTS", "Calendar Events")
-    AIRTABLE_TASKS = os.getenv("AIRTABLE_TASKS", "Tasks")
-    AIRTABLE_PROJECTS = os.getenv("AIRTABLE_PROJECTS", "Projects")
-    AIRTABLE_CLASSES = os.getenv("AIRTABLE_CLASSES", "Classes")
-    AIRTABLE_TRAINING_PLANS = os.getenv("AIRTABLE_TRAINING_PLANS", "Training Plans")
-    AIRTABLE_TRAINING_SESSIONS = os.getenv("AIRTABLE_TRAINING_SESSIONS", "Training Sessions")
-    AIRTABLE_HEALTH_METRICS = os.getenv("AIRTABLE_HEALTH_METRICS", "Health Metrics")
-    AIRTABLE_BODY_METRICS = os.getenv("AIRTABLE_BODY_METRICS", "Body Metrics")
-    AIRTABLE_PLANNED_MEALS = os.getenv("AIRTABLE_PLANNED_MEALS", "Planned Meals")
-    AIRTABLE_MEAL_PLANS = os.getenv("AIRTABLE_MEAL_PLANS", "Meal Plans")
-    AIRTABLE_RECIPES = os.getenv("AIRTABLE_RECIPES", "Recipes")
-    AIRTABLE_GROCERY_ITEMS = os.getenv("AIRTABLE_GROCERY_ITEMS", "Grocery Items")
-    AIRTABLE_ACCOUNTS = os.getenv("AIRTABLE_ACCOUNTS", "Accounts")
-    AIRTABLE_TRANSACTIONS = os.getenv("AIRTABLE_TRANSACTIONS", "Transactions")
-    AIRTABLE_FINANCE_SUMMARY = os.getenv("AIRTABLE_FINANCE_SUMMARY", "Finance Summary")
-    AIRTABLE_WEEKLY_REVIEWS = os.getenv("AIRTABLE_WEEKLY_REVIEWS", "Weekly Reviews")
-    AIRTABLE_SYNC_LOGS = os.getenv("AIRTABLE_SYNC_LOGS", "Sync Logs")
 
     # Google Calendar
     GOOGLE_CALENDAR_IDS = os.getenv("GOOGLE_CALENDAR_IDS", "primary").split(",")
@@ -165,27 +135,6 @@ class GarminConfig(Config):
             errors.append("NOTION_WORKOUTS_DB_ID not set")
         if not cls.NOTION_DAILY_TRACKING_DB_ID:
             errors.append("NOTION_DAILY_TRACKING_DB_ID not set")
-
-        return len(errors) == 0, errors
-
-
-class AirtableConfig(Config):
-    """Airtable specific configuration."""
-
-    @classmethod
-    def validate(cls) -> tuple[bool, List[str]]:
-        """Validate Airtable configuration."""
-        errors = []
-
-        # Check for Personal Access Token (preferred) or legacy API Key
-        if not cls.AIRTABLE_ACCESS_TOKEN and not cls.AIRTABLE_API_KEY:
-            errors.append(
-                "AIRTABLE_ACCESS_TOKEN or AIRTABLE_API_KEY not set. "
-                "Personal Access Token recommended (get from https://airtable.com/create/tokens)"
-            )
-
-        if not cls.AIRTABLE_BASE_ID:
-            errors.append("AIRTABLE_BASE_ID not set")
 
         return len(errors) == 0, errors
 

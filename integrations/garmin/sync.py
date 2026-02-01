@@ -166,7 +166,7 @@ class GarminSync:
             activity_id = str(activity.activity_id) if hasattr(activity, 'activity_id') else ""
             activity_name = activity.activity_name if hasattr(activity, 'activity_name') else "Workout"
 
-            # Convert activity_type to string and map to Airtable format
+            # Convert activity_type to string and map to Notion format
             if hasattr(activity, 'activity_type'):
                 if hasattr(activity.activity_type, 'type_key'):
                     raw_type = str(activity.activity_type.type_key)
@@ -175,7 +175,7 @@ class GarminSync:
                 else:
                     raw_type = "other"
 
-                # Map Garmin activity types to Airtable Activity Type options
+                # Map Garmin activity types to Notion Activity Type options
                 type_mapping = {
                     'running': 'Running',
                     'trail_running': 'Running',

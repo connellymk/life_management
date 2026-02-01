@@ -8,7 +8,7 @@ All financial data is stored in local SQL database for:
 - Privacy (data stays local, never in cloud)
 - Fast complex analytics (30-500x faster than API queries)
 
-Optional future enhancement: Sync summary view to Airtable (last 90 days)
+Optional future enhancement: Sync summary view to Notion (last 90 days)
 for visual dashboards while keeping full history in SQL.
 """
 

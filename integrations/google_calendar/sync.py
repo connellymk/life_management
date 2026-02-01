@@ -1,7 +1,7 @@
 """
 Google Calendar synchronization module
 Handles authentication and fetching events from Google Calendar API
-Events are synced to Airtable via the calendar orchestrator
+Events are synced to Notion via the calendar orchestrator
 """
 
 import os
@@ -486,8 +486,8 @@ class GoogleCalendarSync:
                             stats["events_skipped"] += 1
                         continue
 
-                    # Transform to Notion-compatible format (reuse Airtable transform)
-                    notion_data = self.transform_event_to_airtable(event, calendar_name)
+                    # Transform to Notion-compatible format (reuse Notion transform)
+                    notion_data = self.transform_event_to_notion(event, calendar_name)
 
                     # Check if event exists
                     existing = notion_sync.get_event_by_external_id(event_id)
@@ -541,18 +541,18 @@ class GoogleCalendarSync:
 
         return stats
 
-    def transform_event_to_airtable(
+    def transform_event_to_notion(
         self, event: Dict[str, Any], source_name: str
     ) -> Dict[str, Any]:
         """
-        Transform a Google Calendar event into Airtable event data
+        Transform a Google Calendar event into Notion event data
 
         Args:
             event: Google Calendar event dictionary
             source_name: Name of the calendar source (e.g., 'Personal')
 
         Returns:
-            Dictionary of Airtable event fields
+            Dictionary of Notion event fields
         """
         from datetime import datetime as dt, timedelta
         import pytz
@@ -629,8 +629,8 @@ class GoogleCalendarSync:
         # Check if recurring
         is_recurring = "recurringEventId" in event
 
-        # Build Airtable event data
-        airtable_data = {
+        # Build Notion event data
+        notion_data = {
             "Event ID": event_id,
             "Title": title,
             "Start Time": start_time,
@@ -641,24 +641,24 @@ class GoogleCalendarSync:
         }
 
         if end_time:
-            airtable_data["End Time"] = end_time
+            notion_data["End Time"] = end_time
 
         if location:
-            airtable_data["Location"] = location
+            notion_data["Location"] = location
 
         if description:
-            airtable_data["Description"] = description
+            notion_data["Description"] = description
 
         if attendee_str:
-            airtable_data["Attendees"] = attendee_str
+            notion_data["Attendees"] = attendee_str
 
-        return airtable_data
+        return notion_data
 
-    def sync_calendar_to_airtable(
+    def sync_calendar_to_notion(
         self,
         calendar_id: str,
         calendar_name: str,
-        airtable_sync,
+        notion_sync,
         state_manager=None,
         use_incremental: bool = True,
         dry_run: bool = False,
@@ -666,15 +666,15 @@ class GoogleCalendarSync:
         end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
-        Sync a Google Calendar to Airtable
+        Sync a Google Calendar to Notion
 
         Args:
             calendar_id: Google Calendar ID
             calendar_name: Display name for the calendar
-            airtable_sync: AirtableCalendarSync instance
+            notion_sync: NotionCalendarSync instance
             state_manager: StateManager instance for incremental sync
             use_incremental: Use incremental sync if available (much faster)
-            dry_run: If True, don't actually create/update in Airtable
+            dry_run: If True, don't actually create/update in Notion
             start_date: Start date for event range (optional)
             end_date: End date for event range (optional)
 
@@ -739,32 +739,32 @@ class GoogleCalendarSync:
                 try:
                     # Check if event is cancelled
                     if event.get("status") == "cancelled":
-                        # For cancelled events, we should delete from Airtable if it exists
+                        # For cancelled events, we should delete from Notion if it exists
                         event_id = event.get("id", "")
-                        existing = airtable_sync.get_event_by_external_id(event_id)
+                        existing = notion_sync.get_event_by_external_id(event_id)
                         if existing:
-                            airtable_sync.delete_event(existing['id'])
+                            notion_sync.delete_event(existing['id'])
                             logger.info(f"Deleted cancelled event: {event.get('summary', 'Unknown')}")
                             stats["events_updated"] += 1
                         else:
                             stats["events_skipped"] += 1
                         continue
 
-                    # Transform to Airtable format
-                    airtable_data = self.transform_event_to_airtable(
+                    # Transform to Notion format
+                    notion_data = self.transform_event_to_notion(
                         event, calendar_name
                     )
 
-                    # Sync to Airtable (create or update)
-                    existing = airtable_sync.get_event_by_external_id(airtable_data["Event ID"])
+                    # Sync to Notion (create or update)
+                    existing = notion_sync.get_event_by_external_id(notion_data["Event ID"])
 
                     if existing:
                         # Update existing event
-                        airtable_sync.update_event(existing['id'], airtable_data)
+                        notion_sync.update_event(existing['id'], notion_data)
                         stats["events_updated"] += 1
                     else:
                         # Create new event
-                        airtable_sync.create_event(airtable_data)
+                        notion_sync.create_event(notion_data)
                         stats["events_created"] += 1
 
                 except Exception as e:
