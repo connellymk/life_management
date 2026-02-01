@@ -28,10 +28,10 @@ class Config:
     AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID", "")
 
     # Notion Database IDs
-    NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "")
+    NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "2e890d86-c150-801e-87d3-000b40a2b7f7")
+    NOTION_DAY_DB_ID = os.getenv("NOTION_DAY_DB_ID", "2eb90d86-c150-8045-ba28-000b1ba25a15")
     NOTION_WORKOUTS_DB_ID = os.getenv("NOTION_WORKOUTS_DB_ID", "")
-    NOTION_DAILY_METRICS_DB_ID = os.getenv("NOTION_DAILY_METRICS_DB_ID", "")
-    NOTION_BODY_METRICS_DB_ID = os.getenv("NOTION_BODY_METRICS_DB_ID", "")
+    NOTION_DAILY_TRACKING_DB_ID = os.getenv("NOTION_DAILY_TRACKING_DB_ID", "")
 
     # Airtable Table Names (Dimension Tables)
     AIRTABLE_DAY = os.getenv("AIRTABLE_DAY", "Day")
@@ -65,6 +65,7 @@ class Config:
     GOOGLE_TOKEN_PATH = os.getenv(
         "GOOGLE_TOKEN_PATH", "credentials/google_token.json"
     )
+    GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
     # Garmin
     GARMIN_EMAIL = os.getenv("GARMIN_EMAIL", "")
@@ -147,29 +148,23 @@ class GarminConfig(Config):
         """Validate Garmin configuration."""
         errors = []
 
+        # Check Notion token
+        if not cls.NOTION_TOKEN:
+            errors.append("NOTION_TOKEN not set in .env file")
+        elif not (cls.NOTION_TOKEN.startswith("secret_") or cls.NOTION_TOKEN.startswith("ntn_")):
+            errors.append("NOTION_TOKEN should start with 'secret_' or 'ntn_'")
+
         # Check Garmin credentials
         if not cls.GARMIN_EMAIL:
             errors.append("GARMIN_EMAIL not set")
         if not cls.GARMIN_PASSWORD:
             errors.append("GARMIN_PASSWORD not set")
 
-        # Check Airtable configuration (replaces Notion)
-        if not cls.AIRTABLE_ACCESS_TOKEN and not cls.AIRTABLE_API_KEY:
-            errors.append(
-                "AIRTABLE_ACCESS_TOKEN or AIRTABLE_API_KEY not set. "
-                "Personal Access Token recommended (get from https://airtable.com/create/tokens)"
-            )
-
-        if not cls.AIRTABLE_BASE_ID:
-            errors.append("AIRTABLE_BASE_ID not set")
-
-        # Check that required table names are set
-        if not cls.AIRTABLE_TRAINING_SESSIONS:
-            errors.append("AIRTABLE_TRAINING_SESSIONS table name not set")
-        if not cls.AIRTABLE_HEALTH_METRICS:
-            errors.append("AIRTABLE_HEALTH_METRICS table name not set")
-        if not cls.AIRTABLE_BODY_METRICS:
-            errors.append("AIRTABLE_BODY_METRICS table name not set")
+        # Check Notion database IDs
+        if not cls.NOTION_WORKOUTS_DB_ID:
+            errors.append("NOTION_WORKOUTS_DB_ID not set")
+        if not cls.NOTION_DAILY_TRACKING_DB_ID:
+            errors.append("NOTION_DAILY_TRACKING_DB_ID not set")
 
         return len(errors) == 0, errors
 

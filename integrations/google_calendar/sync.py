@@ -403,7 +403,7 @@ class GoogleCalendarSync:
         Args:
             calendar_id: Google Calendar ID
             calendar_name: Display name for the calendar
-            notion_sync: NotionSync instance
+            notion_sync: NotionCalendarSync instance
             state_manager: StateManager instance for incremental sync
             use_incremental: Use incremental sync if available (much faster)
             dry_run: If True, don't actually create/update in Notion
@@ -420,6 +420,7 @@ class GoogleCalendarSync:
             "events_fetched": 0,
             "events_created": 0,
             "events_updated": 0,
+            "events_deleted": 0,
             "events_skipped": 0,
             "errors": 0,
             "incremental": False,
@@ -461,7 +462,8 @@ class GoogleCalendarSync:
                     start = safe_get(event, "start", "dateTime") or safe_get(
                         event, "start", "date"
                     )
-                    logger.info(f"  {i+1}. {title} ({start})")
+                    status = event.get("status", "confirmed")
+                    logger.info(f"  {i+1}. {title} ({start}) - {status}")
                 if len(events) > 5:
                     logger.info(f"  ... and {len(events) - 5} more events")
                 return stats
@@ -469,38 +471,48 @@ class GoogleCalendarSync:
             # Process each event
             for event in events:
                 try:
-                    # Transform to Notion format
-                    notion_properties = self.transform_event_to_notion(
-                        event, calendar_name
-                    )
+                    event_id = event.get("id", "")
+                    event_status = event.get("status", "confirmed")
 
-                    # Get external ID for duplicate checking
-                    external_id = notion_properties["External ID"]["rich_text"][0][
-                        "text"
-                    ]["content"]
+                    # Handle cancelled/deleted events
+                    if event_status == "cancelled":
+                        existing = notion_sync.get_event_by_external_id(event_id)
+                        if existing:
+                            # Delete (archive) the event in Notion
+                            notion_sync.delete_event(existing['id'])
+                            logger.info(f"Deleted cancelled event: {event.get('summary', 'Unknown')}")
+                            stats["events_deleted"] += 1
+                        else:
+                            stats["events_skipped"] += 1
+                        continue
 
-                    # Create or update in Notion
-                    result = notion_sync.create_or_update_event(
-                        notion_properties, external_id
-                    )
+                    # Transform to Notion-compatible format (reuse Airtable transform)
+                    notion_data = self.transform_event_to_airtable(event, calendar_name)
 
-                    if result == "created":
-                        stats["events_created"] += 1
-                    elif result == "updated":
+                    # Check if event exists
+                    existing = notion_sync.get_event_by_external_id(event_id)
+
+                    if existing:
+                        # Update existing event
+                        notion_sync.update_event(existing['id'], notion_data)
                         stats["events_updated"] += 1
                     else:
-                        stats["events_skipped"] += 1
+                        # Create new event
+                        notion_sync.create_event(notion_data)
+                        stats["events_created"] += 1
 
                 except Exception as e:
                     logger.error(
                         f"Error processing event '{event.get('summary', 'Unknown')}': {e}"
                     )
+                    logger.exception("Full traceback:")
                     stats["errors"] += 1
 
             logger.info(
                 f"Sync completed for '{calendar_name}': "
                 f"{stats['events_created']} created, "
                 f"{stats['events_updated']} updated, "
+                f"{stats['events_deleted']} deleted, "
                 f"{stats['events_skipped']} skipped, "
                 f"{stats['errors']} errors"
             )
@@ -516,6 +528,7 @@ class GoogleCalendarSync:
 
         except Exception as e:
             logger.error(f"Error syncing calendar '{calendar_name}': {e}")
+            logger.exception("Full traceback:")
             stats["errors"] += 1
 
             # Mark sync as failed in state

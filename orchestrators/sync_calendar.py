@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Calendar Sync Orchestrator
-Syncs Google Calendar (and future: Microsoft Calendar) to Airtable
+Syncs Google Calendar (and future: Microsoft Calendar) to Notion
 
-Fetches events from Google Calendar API and creates/updates records in Airtable's
-Calendar Events table with links to the Day table for rollups and aggregations.
+Fetches events from Google Calendar API and creates/updates records in Notion's
+Calendar Events database with links to the Day table for rollups and aggregations.
 """
 
 import sys
@@ -21,23 +21,23 @@ from core.config import GoogleCalendarConfig as Config
 from core.utils import logger, format_duration
 from core.state_manager import StateManager
 from integrations.google_calendar.sync import GoogleCalendarSync
-from airtable.calendar import AirtableCalendarSync
+from notion.calendar import NotionCalendarSync
 
 
 def sync_google_calendars(
-    airtable_sync: AirtableCalendarSync,
+    notion_sync: NotionCalendarSync,
     state_manager: StateManager,
     dry_run: bool = False,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
 ) -> dict:
     """
-    Sync all configured Google Calendars to Airtable
+    Sync all configured Google Calendars to Notion
 
     Args:
-        airtable_sync: AirtableCalendarSync instance for syncing to Airtable
+        notion_sync: NotionCalendarSync instance for syncing to Notion
         state_manager: StateManager instance for incremental sync
-        dry_run: If True, don't actually create/update in Airtable
+        dry_run: If True, don't actually create/update in Notion
         start_date: Start date for event range (optional)
         end_date: End date for event range (optional)
 
@@ -45,7 +45,7 @@ def sync_google_calendars(
         Dictionary with sync statistics
     """
     logger.info("=" * 60)
-    logger.info("Starting Google Calendar Sync")
+    logger.info("Starting Google Calendar Sync to Notion")
     logger.info("=" * 60)
 
     google_sync = GoogleCalendarSync()
@@ -65,6 +65,7 @@ def sync_google_calendars(
         "total_events_fetched": 0,
         "total_events_created": 0,
         "total_events_updated": 0,
+        "total_events_deleted": 0,
         "total_events_skipped": 0,
         "total_errors": 0,
         "calendar_details": [],
@@ -79,10 +80,10 @@ def sync_google_calendars(
         logger.info(f"\nSyncing calendar: {calendar_name} ({calendar_id})")
 
         try:
-            stats = google_sync.sync_calendar_to_airtable(
+            stats = google_sync.sync_calendar_to_notion(
                 calendar_id=calendar_id,
                 calendar_name=calendar_name,
-                airtable_sync=airtable_sync,
+                notion_sync=notion_sync,
                 state_manager=state_manager,
                 use_incremental=True,
                 dry_run=dry_run,
@@ -94,6 +95,7 @@ def sync_google_calendars(
             total_stats["total_events_fetched"] += stats["events_fetched"]
             total_stats["total_events_created"] += stats["events_created"]
             total_stats["total_events_updated"] += stats["events_updated"]
+            total_stats["total_events_deleted"] += stats.get("events_deleted", 0)
             total_stats["total_events_skipped"] += stats["events_skipped"]
             total_stats["total_errors"] += stats["errors"]
             total_stats["calendar_details"].append(stats)
@@ -131,6 +133,7 @@ def print_sync_summary(stats: dict, duration: float, dry_run: bool = False):
     if not dry_run:
         print(f"Events created: {stats['total_events_created']}")
         print(f"Events updated: {stats['total_events_updated']}")
+        print(f"Events deleted: {stats.get('total_events_deleted', 0)}")
         print(f"Events skipped: {stats['total_events_skipped']}")
 
     if stats['total_errors'] > 0:
@@ -147,6 +150,7 @@ def print_sync_summary(stats: dict, duration: float, dry_run: bool = False):
             if not dry_run:
                 print(f"    Created: {cal_stats['events_created']}")
                 print(f"    Updated: {cal_stats['events_updated']}")
+                print(f"    Deleted: {cal_stats.get('events_deleted', 0)}")
                 print(f"    Skipped: {cal_stats['events_skipped']}")
             if cal_stats['errors'] > 0:
                 print(f"    Errors: {cal_stats['errors']}")
@@ -249,17 +253,14 @@ For more information, see README.md and MIGRATION_GUIDE.md
         logger.info("\nRunning health checks...")
         logger.info("Configuration: ✓")
 
-        # Test Airtable connection
+        # Test Notion connection
         try:
-            airtable = AirtableCalendarSync()
-            # Simple test: try to get the calendar events table
-            if airtable.client and airtable.table:
-                logger.info("Airtable connection: ✓")
-            else:
-                logger.error("Airtable connection: ✗")
-                return 1
+            notion = NotionCalendarSync()
+            # Simple test: try to get an event (empty query is fine)
+            notion.get_event_by_external_id("__health_check_test__")
+            logger.info("Notion connection: ✓")
         except Exception as e:
-            logger.error(f"Airtable connection: ✗ ({e})")
+            logger.error(f"Notion connection: ✗ ({e})")
             return 1
 
         # Test Google Calendar auth
@@ -287,12 +288,12 @@ For more information, see README.md and MIGRATION_GUIDE.md
         logger.error(f"Failed to initialize state manager: {e}")
         return 1
 
-    # Initialize Airtable sync
+    # Initialize Notion sync
     try:
-        airtable_sync = AirtableCalendarSync()
-        logger.info("✓ Initialized Airtable sync")
+        notion_sync = NotionCalendarSync()
+        logger.info("✓ Initialized Notion sync")
     except Exception as e:
-        logger.error(f"Failed to initialize Airtable sync: {e}")
+        logger.error(f"Failed to initialize Notion sync: {e}")
         return 1
 
     # Start sync
@@ -302,7 +303,7 @@ For more information, see README.md and MIGRATION_GUIDE.md
     try:
         # Sync Google Calendars
         stats = sync_google_calendars(
-            airtable_sync, state_manager, dry_run=args.dry_run,
+            notion_sync, state_manager, dry_run=args.dry_run,
             start_date=start_date, end_date=end_date
         )
         if not stats.get("success", True):

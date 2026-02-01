@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
 """
 Health & Training Sync Orchestrator
-Syncs Garmin Connect data to Airtable and SQL:
+Syncs Garmin Connect data to Notion:
 
-- Training Sessions → Airtable (workouts with Day/Week links for rollups)
-- Health Metrics → Airtable (daily health data with Day links)
-- Body Metrics → Airtable (weight/composition with Day links)
-- Historical Data (>90 days) → SQL database (optional archival)
-
-Note: Currently still uses Notion code. Migration to Airtable in progress.
-See MIGRATION_NOTES.md for refactoring tasks.
+- Garmin Activities → Notion (workouts/activities)
+- Daily Tracking → Notion (daily health data + body metrics combined)
 """
 
 import sys
@@ -24,30 +19,36 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.config import GarminConfig as Config
 from core.utils import setup_logging
 from core.state_manager import StateManager
-from core.database import Database
-from storage.health import HealthStorage
 from integrations.garmin.sync import GarminSync
-from airtable.health import AirtableTrainingSessionsSync, AirtableHealthMetricsSync, AirtableBodyMetricsSync
-from airtable.base_client import AirtableClient
+from notion.health import NotionActivitiesSync, NotionDailyTrackingSync
 
 logger = setup_logging("health_sync")
 
 
-def sync_workouts(garmin: GarminSync, airtable_sync: AirtableTrainingSessionsSync, state: StateManager, dry_run: bool = False, start_date: datetime = None, end_date: datetime = None) -> dict:
+def sync_workouts(
+    garmin: GarminSync,
+    notion_sync: NotionActivitiesSync,
+    state: StateManager,
+    dry_run: bool = False,
+    start_date: datetime = None,
+    end_date: datetime = None
+) -> dict:
     """
-    Sync workouts from Garmin to Airtable Training Sessions table.
+    Sync workouts from Garmin to Notion Garmin Activities database.
 
     Args:
         garmin: Garmin sync client
-        airtable_sync: Airtable training sessions sync client
+        notion_sync: Notion activities sync client
         state: State manager
         dry_run: If True, don't actually create/update records
+        start_date: Optional start date
+        end_date: Optional end date
 
     Returns:
         Dictionary with sync stats
     """
     logger.info("=" * 50)
-    logger.info("Syncing Workouts to Airtable...")
+    logger.info("Syncing Workouts to Notion...")
     logger.info("=" * 50)
 
     start_time = time.time()
@@ -72,65 +73,22 @@ def sync_workouts(garmin: GarminSync, airtable_sync: AirtableTrainingSessionsSyn
                 logger.info(f"  ... and {len(activities) - 5} more")
             return stats
 
-        # Sync each activity to Airtable
+        # Sync each activity to Notion
         for activity in activities:
             external_id = activity.get("external_id")
 
             try:
-                # Map Garmin activity to Airtable format
-                session_data = {
-                    'Activity ID': external_id,
-                    'Activity Name': activity.get('title'),
-                    'Activity Type': activity.get('activity_type'),
-                    'Start Time': activity.get('start_time'),
-                    'Distance': activity.get('distance'),
-                    'Calories': activity.get('calories'),
-                    'Average HR': activity.get('avg_heart_rate'),
-                    'Max HR': activity.get('max_heart_rate'),
-                    'Elevation Gain': activity.get('elevation'),
-                    'Garmin URL': activity.get('garmin_url'),
-                }
+                # Check if activity already exists
+                existing = notion_sync.get_activity_by_external_id(str(external_id))
 
-                # Add duration in seconds (convert from minutes)
-                if activity.get('duration_minutes'):
-                    session_data['Duration'] = int(activity.get('duration_minutes') * 60)
-
-                # Add pace and speed
-                if activity.get('pace'):
-                    # Keep pace as string in MM:SS format for Airtable
-                    session_data['Average Pace'] = str(activity.get('pace'))
-
-                if activity.get('speed'):
-                    session_data['Average Speed'] = activity.get('speed')
-
-                # Add detailed metrics from activity summary
-                if activity.get('aerobic_training_effect') is not None:
-                    session_data['Aerobic Training Effect'] = activity.get('aerobic_training_effect')
-                if activity.get('anaerobic_training_effect') is not None:
-                    session_data['Anaerobic Training Effect'] = activity.get('anaerobic_training_effect')
-                if activity.get('activity_training_load') is not None:
-                    session_data['Activity Training Load'] = activity.get('activity_training_load')
-                if activity.get('avg_grade_adjusted_speed') is not None:
-                    session_data['Avg Grade Adjusted Speed'] = activity.get('avg_grade_adjusted_speed')
-                if activity.get('avg_moving_speed') is not None:
-                    session_data['Avg Moving Speed'] = activity.get('avg_moving_speed')
-                if activity.get('avg_temperature') is not None:
-                    session_data['Avg Temperature'] = activity.get('avg_temperature')
-                if activity.get('body_battery_change') is not None:
-                    session_data['Body Battery Change'] = activity.get('body_battery_change')
-                if activity.get('moving_duration_minutes') is not None:
-                    session_data['Moving Duration'] = activity.get('moving_duration_minutes')
-
-                # Sync to Airtable (create or update)
-                result = airtable_sync.sync_session(session_data)
-
-                if result:
-                    # Check if it was a new record or update
-                    existing = airtable_sync.get_session_by_activity_id(external_id)
-                    if existing and existing['id'] == result['id']:
-                        stats["updated"] += 1
-                    else:
-                        stats["created"] += 1
+                if existing:
+                    # Update existing
+                    notion_sync.update_activity(existing['id'], activity)
+                    stats["updated"] += 1
+                else:
+                    # Create new
+                    notion_sync.create_activity(activity)
+                    stats["created"] += 1
 
             except Exception as e:
                 logger.error(f"Error syncing activity {external_id}: {e}")
@@ -159,29 +117,35 @@ def sync_workouts(garmin: GarminSync, airtable_sync: AirtableTrainingSessionsSyn
         return stats
 
 
-def sync_daily_metrics(garmin: GarminSync, airtable_sync: AirtableHealthMetricsSync, storage: HealthStorage = None, dry_run: bool = False, start_date: datetime = None, end_date: datetime = None) -> dict:
+def sync_daily_metrics(
+    garmin: GarminSync,
+    notion_sync: NotionDailyTrackingSync,
+    dry_run: bool = False,
+    start_date: datetime = None,
+    end_date: datetime = None
+) -> dict:
     """
-    Sync daily metrics from Garmin to Airtable Health Metrics table.
-    Optionally also save to SQL for historical archival.
+    Sync daily metrics from Garmin to Notion Daily Tracking database.
 
     Args:
         garmin: Garmin sync client
-        airtable_sync: Airtable health metrics sync client
-        storage: Optional SQL storage for archival (HealthStorage)
+        notion_sync: Notion daily tracking sync client
         dry_run: If True, don't actually save data
+        start_date: Optional start date
+        end_date: Optional end date
 
     Returns:
         Dictionary with sync stats
     """
     logger.info("=" * 50)
-    logger.info("Syncing Daily Metrics to Airtable...")
+    logger.info("Syncing Daily Metrics to Notion...")
     logger.info("=" * 50)
 
     start_time = time.time()
-    stats = {"fetched": 0, "synced": 0, "sql_saved": 0, "errors": 0}
+    stats = {"fetched": 0, "synced": 0, "errors": 0}
 
     try:
-        # Fetch daily metrics (uses SYNC_LOOKBACK_DAYS from config, defaults to 90 days)
+        # Fetch daily metrics
         daily_metrics = garmin.get_daily_metrics(start_date=start_date, end_date=end_date)
         stats["fetched"] = len(daily_metrics)
 
@@ -199,53 +163,13 @@ def sync_daily_metrics(garmin: GarminSync, airtable_sync: AirtableHealthMetricsS
                 logger.info(f"  ... and {len(daily_metrics) - 5} more")
             return stats
 
-        # Sync each day to Airtable
+        # Sync each day to Notion
         for metric in daily_metrics:
             try:
-                # Parse date string to datetime
-                metric_date = datetime.fromisoformat(metric.get('date'))
-
-                # Map Garmin metrics to Airtable format
-                airtable_data = {
-                    'Date': metric_date,
-                    'Steps': metric.get('steps'),
-                    'Floors Climbed': metric.get('floors_climbed'),
-                    'Active Calories': metric.get('active_calories'),
-                    'Total Calories': metric.get('total_calories'),
-                    'Resting HR': metric.get('avg_hr'),
-                    'Stress Level': metric.get('avg_stress'),
-                    'Body Battery': metric.get('body_battery_max'),
-                }
-
-                # Add sleep data (convert hours to seconds for Duration field)
-                if metric.get('sleep_hours'):
-                    airtable_data['Sleep Duration'] = int(metric.get('sleep_hours') * 3600)
-
-                # Add sleep score if available
-                if metric.get('sleep_score'):
-                    airtable_data['Sleep Score'] = metric.get('sleep_score')
-
-                # Add intensity minutes if available
-                if metric.get('moderate_intensity_minutes'):
-                    airtable_data['Moderate Intensity Minutes'] = metric.get('moderate_intensity_minutes')
-                if metric.get('vigorous_intensity_minutes'):
-                    airtable_data['Vigorous Intensity Minutes'] = metric.get('vigorous_intensity_minutes')
-
-                # Calculate total intensity minutes
-                moderate = metric.get('moderate_intensity_minutes') or 0
-                vigorous = metric.get('vigorous_intensity_minutes') or 0
-                if moderate or vigorous:
-                    airtable_data['Intensity Minutes'] = moderate + vigorous
-
-                # Sync to Airtable (create or update)
-                result = airtable_sync.create_or_update_metrics(airtable_data)
+                # Sync to Notion (create or update)
+                result = notion_sync.sync_daily_metrics(metric)
                 if result:
                     stats["synced"] += 1
-
-                # Also save to SQL if storage provided (for historical archival)
-                if storage:
-                    if storage.save_daily_metric(metric):
-                        stats["sql_saved"] += 1
 
             except Exception as e:
                 logger.error(f"Error syncing daily metric for {metric.get('date')}: {e}")
@@ -253,7 +177,7 @@ def sync_daily_metrics(garmin: GarminSync, airtable_sync: AirtableHealthMetricsS
 
         elapsed = time.time() - start_time
         logger.info(f"Daily metrics sync complete in {elapsed:.1f}s")
-        logger.info(f"  Fetched: {stats['fetched']}, Synced to Airtable: {stats['synced']}, SQL: {stats['sql_saved']}, Errors: {stats['errors']}")
+        logger.info(f"  Fetched: {stats['fetched']}, Synced: {stats['synced']}, Errors: {stats['errors']}")
 
         return stats
 
@@ -263,26 +187,32 @@ def sync_daily_metrics(garmin: GarminSync, airtable_sync: AirtableHealthMetricsS
         return stats
 
 
-def sync_body_metrics(garmin: GarminSync, airtable_sync: AirtableBodyMetricsSync, storage: HealthStorage = None, dry_run: bool = False, start_date: datetime = None, end_date: datetime = None) -> dict:
+def sync_body_metrics(
+    garmin: GarminSync,
+    notion_sync: NotionDailyTrackingSync,
+    dry_run: bool = False,
+    start_date: datetime = None,
+    end_date: datetime = None
+) -> dict:
     """
-    Sync body composition metrics from Garmin to Airtable Body Metrics table.
-    Optionally also save to SQL for historical archival.
+    Sync body composition metrics from Garmin to Notion Daily Tracking database.
 
     Args:
         garmin: Garmin sync client
-        airtable_sync: Airtable body metrics sync client
-        storage: Optional SQL storage for archival (HealthStorage)
+        notion_sync: Notion daily tracking sync client
         dry_run: If True, don't actually save data
+        start_date: Optional start date
+        end_date: Optional end date
 
     Returns:
         Dictionary with sync stats
     """
     logger.info("=" * 50)
-    logger.info("Syncing Body Metrics to Airtable...")
+    logger.info("Syncing Body Metrics to Notion...")
     logger.info("=" * 50)
 
     start_time = time.time()
-    stats = {"fetched": 0, "synced": 0, "sql_saved": 0, "errors": 0}
+    stats = {"fetched": 0, "synced": 0, "errors": 0}
 
     try:
         # Fetch body metrics (if available from Garmin)
@@ -297,50 +227,27 @@ def sync_body_metrics(garmin: GarminSync, airtable_sync: AirtableBodyMetricsSync
 
         if dry_run:
             logger.info("DRY RUN: Would sync body metrics")
+            for metric in body_metrics[:5]:
+                logger.info(f"  - {metric.get('date')}: {metric.get('weight')} lbs")
+            if len(body_metrics) > 5:
+                logger.info(f"  ... and {len(body_metrics) - 5} more")
             return stats
 
-        # Sync each entry to Airtable
+        # Sync each entry to Notion
         for metric in body_metrics:
             try:
-                # Parse date string to datetime
-                metric_date = datetime.fromisoformat(metric.get('date'))
-
-                # Map Garmin metrics to Airtable format
-                airtable_data = {
-                    'Date': metric_date,
-                    'Time': metric_date,  # Use date as time if no specific time available
-                    'Weight': metric.get('weight'),
-                }
-
-                # Add optional body composition fields
-                if metric.get('bmi'):
-                    airtable_data['BMI'] = metric.get('bmi')
-                if metric.get('body_fat_percent'):
-                    airtable_data['Body Fat %'] = metric.get('body_fat_percent')
-                if metric.get('muscle_mass'):
-                    airtable_data['Muscle Mass'] = metric.get('muscle_mass')
-                if metric.get('bone_mass'):
-                    airtable_data['Bone Mass'] = metric.get('bone_mass')
-                if metric.get('body_water_percent'):
-                    airtable_data['Body Water %'] = metric.get('body_water_percent')
-
-                # Create measurement in Airtable
-                result = airtable_sync.create_measurement(airtable_data)
+                # Sync to Notion (create or update)
+                result = notion_sync.sync_body_metrics(metric)
                 if result:
                     stats["synced"] += 1
 
-                # Also save to SQL if storage provided (for historical archival)
-                if storage:
-                    if storage.save_body_metric(metric):
-                        stats["sql_saved"] += 1
-
             except Exception as e:
-                logger.error(f"Error syncing body metric: {e}")
+                logger.error(f"Error syncing body metric for {metric.get('date')}: {e}")
                 stats["errors"] += 1
 
         elapsed = time.time() - start_time
         logger.info(f"Body metrics sync complete in {elapsed:.1f}s")
-        logger.info(f"  Fetched: {stats['fetched']}, Synced to Airtable: {stats['synced']}, SQL: {stats['sql_saved']}, Errors: {stats['errors']}")
+        logger.info(f"  Fetched: {stats['fetched']}, Synced: {stats['synced']}, Errors: {stats['errors']}")
 
         return stats
 
@@ -361,63 +268,39 @@ def health_check() -> bool:
     logger.info("Health Sync - Health Check")
     logger.info("=" * 60)
 
-    # Check configuration
-    logger.info("\n1. Checking Airtable configuration...")
-    from core.config import AirtableConfig
-    is_valid, errors = AirtableConfig.validate()
+    # Check Garmin configuration
+    logger.info("\n1. Checking Garmin configuration...")
+    is_valid, errors = Config.validate()
 
     if not is_valid:
-        logger.error("X Airtable configuration not valid:")
+        logger.error("X Configuration not valid:")
         for error in errors:
             logger.error(f"  - {error}")
         return False
 
-    logger.info("+ Airtable configuration valid")
+    logger.info("+ Configuration valid")
 
-    # Check Airtable connection
-    logger.info("\n2. Checking Airtable connection...")
+    # Check Notion connection
+    logger.info("\n2. Checking Notion connection...")
     try:
-        client = AirtableClient()
-        # Try to get the tables to verify connection
-        training_table = client.get_training_sessions_table()
-        health_table = client.get_health_metrics_table()
-        body_table = client.get_body_metrics_table()
-        logger.info("  + Training Sessions table accessible")
-        logger.info("  + Health Metrics table accessible")
-        logger.info("  + Body Metrics table accessible")
+        activities_sync = NotionActivitiesSync()
+        tracking_sync = NotionDailyTrackingSync()
+        logger.info(f"  + Garmin Activities database: {Config.NOTION_WORKOUTS_DB_ID}")
+        logger.info(f"  + Daily Tracking database: {Config.NOTION_DAILY_TRACKING_DB_ID}")
 
     except Exception as e:
-        logger.error(f"  X Airtable connection failed: {e}")
+        logger.error(f"  X Notion connection failed: {e}")
         return False
 
-    # Check SQL database (optional, for historical archival)
-    logger.info("\n3. Checking SQL database (optional, for archival)...")
-    try:
-        db = Database(Config.DATA_DB_PATH)
-        is_valid, errors = db.verify_schema()
-
-        if not is_valid:
-            logger.warning("! Database schema invalid (optional for archival):")
-            for error in errors:
-                logger.warning(f"  - {error}")
-            logger.warning("\nTo enable archival, run: python scripts/init_database.py")
-        else:
-            logger.info("+ Database schema valid")
-
-            # Show current data counts
-            counts = db.get_table_counts()
-            logger.info(f"  Daily metrics: {counts['daily_metrics']}")
-            logger.info(f"  Body metrics: {counts['body_metrics']}")
-
-    except Exception as e:
-        logger.warning(f"! Database not available (optional for archival): {e}")
-
     # Check Garmin credentials
-    logger.info("\n4. Checking Garmin credentials...")
+    logger.info("\n3. Checking Garmin authentication...")
     try:
         garmin = GarminSync()
-        # Try to authenticate (will fail if credentials are wrong)
-        logger.info("  + Garmin credentials configured")
+        if garmin.authenticate():
+            logger.info("  + Garmin authentication successful")
+        else:
+            logger.error("  X Garmin authentication failed")
+            return False
 
     except Exception as e:
         logger.error(f"  X Garmin connection failed: {e}")
@@ -427,14 +310,12 @@ def health_check() -> bool:
     logger.info("+ Health check passed!")
     logger.info("=" * 60)
     logger.info("\nData storage:")
-    logger.info("  - Training Sessions: Airtable (with Day/Week links)")
-    logger.info("  - Health Metrics: Airtable (with Day links)")
-    logger.info("  - Body Metrics: Airtable (with Day links)")
+    logger.info("  - Garmin Activities: Notion")
+    logger.info("  - Daily Tracking: Notion (daily metrics + body metrics)")
     logger.info(f"  - History: {Config.SYNC_LOOKBACK_DAYS} days")
-    logger.info("  - SQL archival: Optional (for >90 days)")
     logger.info("\nNext steps:")
     logger.info("  1. Run 'python orchestrators/sync_health.py' to sync data")
-    logger.info("  2. View data in Airtable base")
+    logger.info("  2. View data in Notion databases")
 
     return True
 
@@ -442,7 +323,7 @@ def health_check() -> bool:
 def main():
     """Main sync orchestrator."""
     parser = argparse.ArgumentParser(
-        description="Sync health data from Garmin to Airtable"
+        description="Sync health data from Garmin to Notion"
     )
     parser.add_argument(
         "--dry-run",
@@ -457,22 +338,17 @@ def main():
     parser.add_argument(
         "--workouts-only",
         action="store_true",
-        help="Sync only workouts to Airtable Training Sessions",
+        help="Sync only workouts to Notion Garmin Activities",
     )
     parser.add_argument(
         "--metrics-only",
         action="store_true",
-        help="Sync only daily metrics to Airtable Health Metrics",
+        help="Sync only daily metrics to Notion Daily Tracking",
     )
     parser.add_argument(
         "--body-only",
         action="store_true",
-        help="Sync only body metrics to Airtable Body Metrics",
-    )
-    parser.add_argument(
-        "--archive-to-sql",
-        action="store_true",
-        help="Also archive data to SQL database for historical analysis",
+        help="Sync only body metrics to Notion Daily Tracking",
     )
     parser.add_argument(
         "--start-date",
@@ -504,9 +380,8 @@ def main():
     logger.info("=" * 60)
     logger.info("Health & Training Data Sync - Starting")
     logger.info("=" * 60)
-    logger.info(f"Training Sessions: Airtable (with Day/Week links)")
-    logger.info(f"Health Metrics: Airtable (with Day links)")
-    logger.info(f"Body Metrics: Airtable (with Day links)")
+    logger.info(f"Garmin Activities: Notion")
+    logger.info(f"Daily Tracking: Notion (metrics + body)")
 
     if sync_start_date or sync_end_date:
         start_str = sync_start_date.strftime("%Y-%m-%d") if sync_start_date else "default"
@@ -514,9 +389,6 @@ def main():
         logger.info(f"Date Range: {start_str} to {end_str}")
     else:
         logger.info(f"History: {Config.SYNC_LOOKBACK_DAYS} days")
-
-    if args.archive_to_sql:
-        logger.info(f"SQL Archival: Enabled ({Config.DATA_DB_PATH})")
 
     if args.dry_run:
         logger.info("! DRY RUN MODE - No changes will be made")
@@ -526,35 +398,43 @@ def main():
     try:
         # Initialize clients
         garmin = GarminSync()
-        airtable_client = AirtableClient()
 
         # Determine what to sync
         sync_all = not any([args.workouts_only, args.metrics_only, args.body_only])
 
-        # Initialize SQL storage if archival is enabled
-        sql_storage = None
-        if args.archive_to_sql:
-            db = Database(Config.DATA_DB_PATH)
-            sql_storage = HealthStorage(db)
-
-        # Sync workouts to Airtable
+        # Sync workouts to Notion
         workout_stats = {}
         if sync_all or args.workouts_only:
             state_manager = StateManager()
-            airtable_sessions = AirtableTrainingSessionsSync(airtable_client)
-            workout_stats = sync_workouts(garmin, airtable_sessions, state_manager, dry_run=args.dry_run, start_date=sync_start_date, end_date=sync_end_date)
+            notion_activities = NotionActivitiesSync()
+            workout_stats = sync_workouts(
+                garmin, notion_activities, state_manager,
+                dry_run=args.dry_run,
+                start_date=sync_start_date,
+                end_date=sync_end_date
+            )
 
-        # Sync daily metrics to Airtable
+        # Sync daily metrics to Notion
         metrics_stats = {}
         if sync_all or args.metrics_only:
-            airtable_health = AirtableHealthMetricsSync(airtable_client)
-            metrics_stats = sync_daily_metrics(garmin, airtable_health, storage=sql_storage, dry_run=args.dry_run, start_date=sync_start_date, end_date=sync_end_date)
+            notion_tracking = NotionDailyTrackingSync()
+            metrics_stats = sync_daily_metrics(
+                garmin, notion_tracking,
+                dry_run=args.dry_run,
+                start_date=sync_start_date,
+                end_date=sync_end_date
+            )
 
-        # Sync body metrics to Airtable
+        # Sync body metrics to Notion
         body_stats = {}
         if sync_all or args.body_only:
-            airtable_body = AirtableBodyMetricsSync(airtable_client)
-            body_stats = sync_body_metrics(garmin, airtable_body, storage=sql_storage, dry_run=args.dry_run, start_date=sync_start_date, end_date=sync_end_date)
+            notion_tracking = NotionDailyTrackingSync()
+            body_stats = sync_body_metrics(
+                garmin, notion_tracking,
+                dry_run=args.dry_run,
+                start_date=sync_start_date,
+                end_date=sync_end_date
+            )
 
         # Summary
         elapsed = time.time() - start_time
@@ -563,31 +443,21 @@ def main():
         logger.info("=" * 60)
 
         if not args.dry_run:
-            # Show Airtable stats
             if sync_all or args.workouts_only:
-                logger.info("\nAirtable Training Sessions:")
+                logger.info("\nNotion Garmin Activities:")
                 logger.info(f"  Created: {workout_stats.get('created', 0)}")
                 logger.info(f"  Updated: {workout_stats.get('updated', 0)}")
 
             if sync_all or args.metrics_only:
-                logger.info("\nAirtable Health Metrics:")
+                logger.info("\nNotion Daily Tracking (metrics):")
                 logger.info(f"  Synced: {metrics_stats.get('synced', 0)}")
 
             if sync_all or args.body_only:
-                logger.info("\nAirtable Body Metrics:")
+                logger.info("\nNotion Daily Tracking (body):")
                 logger.info(f"  Synced: {body_stats.get('synced', 0)}")
 
-            # Show SQL stats if archival enabled
-            if args.archive_to_sql and sql_storage:
-                db = Database(Config.DATA_DB_PATH)
-                counts = db.get_table_counts()
-                logger.info("\nSQL Database (Archival):")
-                logger.info(f"  Daily metrics: {counts['daily_metrics']} days")
-                logger.info(f"  Body metrics: {counts['body_metrics']} entries")
-
             logger.info("\n+ Data synced successfully")
-            logger.info("  - View in Airtable base")
-            logger.info("  - Data linked to Day/Week tables for rollups")
+            logger.info("  - View in Notion databases")
 
     except Exception as e:
         logger.error(f"\nX Sync failed: {e}")
