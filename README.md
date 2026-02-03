@@ -104,17 +104,29 @@ personal_assistant/
 
 ### First-Time Setup
 
-1. **Install dependencies**:
+1. **Create and activate a virtual environment**:
+   ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   
+   # Activate virtual environment
+   # On Mac/Linux:
+   source venv/bin/activate
+   # On Windows:
+   # venv\Scripts\activate
+   ```
+
+2. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Initialize SQL database** (for financial data):
+3. **Initialize SQL database** (for financial data):
    ```bash
    python scripts/init_database.py
    ```
 
-3. **Configure credentials** in `.env` file:
+4. **Configure credentials** in `.env` file:
    ```bash
    cp .env.example .env
    # Edit .env with your credentials
