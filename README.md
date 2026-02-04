@@ -1,13 +1,12 @@
 # Personal Assistant System
 
-A unified personal productivity system that syncs data from multiple sources (Google Calendar, Garmin Connect, Plaid Banking) to Notion, enabling AI-powered life management with Claude.
+A unified personal productivity system that syncs data from multiple sources (Google Calendar, Garmin Connect) to Notion, enabling AI-powered life management with Claude.
 
 ## Overview
 
 This system syncs external data sources to Notion databases:
 - **Calendar Events**: Google Calendar → Notion
 - **Health & Training**: Garmin Connect → Notion (Activities + Daily Tracking)
-- **Financial Data**: Plaid → SQL (local storage for security)
 
 ### Integrations
 
@@ -24,36 +23,19 @@ This system syncs external data sources to Notion databases:
    - Imperial units (miles, lbs, feet)
    - **Status**: ✅ Production Ready
 
-3. **Plaid Banking** → SQL Database
-   - Bank accounts, credit cards, investments (encrypted tokens)
-   - Transactions (unlimited history)
-   - Daily balance snapshots (net worth tracking)
-   - **Security**: Encrypted tokens, masked account numbers, local storage only
-   - **Status**: ✅ Production Ready
-
 ## Architecture
 
 ```
 personal_assistant/
 ├── core/                    # Shared utilities
 │   ├── config.py           # Unified configuration
-│   ├── database.py         # SQLite database management
-│   ├── secure_storage.py   # Encrypted token storage
-│   ├── state_manager.py    # SQLite state tracking
 │   └── utils.py            # Logging, retry, rate limiting
 │
 ├── integrations/           # External data sources
 │   ├── google_calendar/    # Google Calendar API client
 │   │   └── sync.py        # Calendar event fetching
-│   ├── garmin/            # Garmin Connect API client
-│   │   └── sync.py        # Health and activity data fetching
-│   └── plaid/             # Plaid banking API client
-│       └── sync.py        # Financial data fetching
-│
-├── storage/               # SQL storage modules
-│   ├── financial.py       # Financial data CRUD operations
-│   ├── health.py          # Health data CRUD operations
-│   └── queries.py         # Pre-built analytics queries
+│   └── garmin/            # Garmin Connect API client
+│       └── sync.py        # Health and activity data fetching
 │
 ├── notion/                # Notion database operations
 │   ├── calendar.py        # Calendar Events sync
@@ -61,16 +43,9 @@ personal_assistant/
 │
 ├── orchestrators/         # Main sync scripts
 │   ├── sync_calendar.py   # Run calendar sync (Notion)
-│   ├── sync_health.py     # Run health sync (Notion)
-│   ├── sync_financial.py  # Run financial sync (SQL only)
-│   └── setup_plaid.py     # Link bank accounts
-│
-├── scripts/               # Utility scripts
-│   └── init_database.py   # Initialize SQL database
+│   └── sync_health.py     # Run health sync (Notion)
 │
 ├── .env                   # Configuration (credentials, database IDs)
-├── state.db              # SQLite state database
-├── data.db               # SQLite data database (financial)
 └── README.md             # This file
 ```
 
@@ -99,7 +74,6 @@ personal_assistant/
 - Mac/Linux/Windows with Python 3.9+
 - Google account with Google Calendar
 - Garmin Connect account (for health sync)
-- Plaid account (for financial sync - free sandbox available)
 - Notion Integration with access to your databases
 
 ### First-Time Setup
@@ -108,7 +82,7 @@ personal_assistant/
    ```bash
    # Create virtual environment
    python3 -m venv venv
-   
+
    # Activate virtual environment
    # On Mac/Linux:
    source venv/bin/activate
@@ -121,12 +95,7 @@ personal_assistant/
    pip install -r requirements.txt
    ```
 
-3. **Initialize SQL database** (for financial data):
-   ```bash
-   python scripts/init_database.py
-   ```
-
-4. **Configure credentials** in `.env` file:
+3. **Configure credentials** in `.env` file:
    ```bash
    cp .env.example .env
    # Edit .env with your credentials
@@ -175,22 +144,6 @@ python orchestrators/sync_health.py --health-check
 python orchestrators/sync_health.py --start-date 2026-01-01 --end-date 2026-01-31
 ```
 
-#### Financial Sync (SQL Only)
-
-```bash
-# Setup (link bank accounts)
-python orchestrators/setup_plaid.py
-
-# Run sync
-python orchestrators/sync_financial.py
-
-# Dry run
-python orchestrators/sync_financial.py --dry-run
-
-# Health check
-python orchestrators/sync_financial.py --health-check
-```
-
 ### Automated Syncing (Optional)
 
 **Mac/Linux (cron)**:
@@ -202,23 +155,13 @@ crontab -e
 
 # Health - twice daily
 0 7,19 * * * cd /path/to/personal_assistant && python orchestrators/sync_health.py >> logs/cron_health.log 2>&1
-
-# Financial - daily at 7 AM
-0 7 * * * cd /path/to/personal_assistant && python orchestrators/sync_financial.py >> logs/cron_financial.log 2>&1
 ```
 
 ## Security
 
-**General Security**:
 - All credentials stored in `.env` files (gitignored)
 - OAuth tokens cached locally
 - No credentials committed to git
-
-**Financial Security**:
-- All financial data stored locally in SQL database
-- Plaid access tokens encrypted with Fernet (AES-128)
-- Full account numbers NEVER stored - only last 4 digits
-- Sensitive data redacted from logs
 
 ## Troubleshooting
 
