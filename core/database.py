@@ -1,6 +1,6 @@
 """
 SQLite database module for storing high-volume data.
-Provides CRUD operations for financial and health data.
+Provides CRUD operations for health data.
 """
 
 import sqlite3
@@ -18,7 +18,6 @@ class Database:
     SQLite database manager for personal assistant data.
 
     Handles:
-    - Financial data (transactions, accounts, balances, investments, bills)
     - Health data (daily metrics, body metrics)
     - Schema migrations
     - CRUD operations
@@ -78,13 +77,6 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Financial Tables
-            self._create_accounts_table(cursor)
-            self._create_transactions_table(cursor)
-            self._create_balances_table(cursor)
-            self._create_investments_table(cursor)
-            self._create_bills_table(cursor)
-
             # Health Tables
             self._create_daily_metrics_table(cursor)
             self._create_body_metrics_table(cursor)
@@ -92,111 +84,6 @@ class Database:
             conn.commit()
 
         logger.info("✓ Database schema initialized")
-
-    def _create_accounts_table(self, cursor):
-        """Create accounts table and indexes."""
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS accounts (
-                account_id TEXT PRIMARY KEY,
-                item_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                official_name TEXT,
-                type TEXT NOT NULL,
-                subtype TEXT,
-                masked_number TEXT,
-                institution_name TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_item ON accounts(item_id)")
-
-    def _create_transactions_table(self, cursor):
-        """Create transactions table and indexes."""
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transactions (
-                transaction_id TEXT PRIMARY KEY,
-                account_id TEXT NOT NULL,
-                item_id TEXT NOT NULL,
-                date DATE NOT NULL,
-                amount REAL NOT NULL,
-                name TEXT NOT NULL,
-                merchant_name TEXT,
-                category_primary TEXT,
-                category_detailed TEXT,
-                pending BOOLEAN DEFAULT 0,
-                payment_channel TEXT,
-                iso_currency_code TEXT DEFAULT 'USD',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (account_id) REFERENCES accounts(account_id)
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_primary)")
-
-    def _create_balances_table(self, cursor):
-        """Create balances table and indexes."""
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS balances (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_id TEXT NOT NULL,
-                date DATE NOT NULL,
-                current_balance REAL,
-                available_balance REAL,
-                credit_limit REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (account_id) REFERENCES accounts(account_id),
-                UNIQUE(account_id, date)
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_balances_date ON balances(date DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_balances_account ON balances(account_id)")
-
-    def _create_investments_table(self, cursor):
-        """Create investments table and indexes."""
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS investments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                holding_id TEXT NOT NULL,
-                account_id TEXT NOT NULL,
-                security_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                ticker TEXT,
-                type TEXT,
-                quantity REAL,
-                price REAL,
-                value REAL,
-                cost_basis REAL,
-                date DATE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (account_id) REFERENCES accounts(account_id),
-                UNIQUE(holding_id, date)
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_investments_date ON investments(date DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_investments_ticker ON investments(ticker)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_investments_account ON investments(account_id)")
-
-    def _create_bills_table(self, cursor):
-        """Create bills table."""
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS bills (
-                bill_id TEXT PRIMARY KEY,
-                account_id TEXT,
-                name TEXT NOT NULL,
-                amount REAL,
-                frequency TEXT,
-                category TEXT,
-                next_payment_date DATE,
-                last_payment_date DATE,
-                auto_pay BOOLEAN DEFAULT 0,
-                status TEXT DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (account_id) REFERENCES accounts(account_id)
-            )
-        """)
 
     def _create_daily_metrics_table(self, cursor):
         """Create daily_metrics table and indexes."""
@@ -250,7 +137,6 @@ class Database:
             Dictionary mapping table names to row counts
         """
         tables = [
-            "accounts", "transactions", "balances", "investments", "bills",
             "daily_metrics", "body_metrics"
         ]
 
@@ -293,7 +179,6 @@ class Database:
             Tuple of (is_valid, list of errors)
         """
         expected_tables = [
-            "accounts", "transactions", "balances", "investments", "bills",
             "daily_metrics", "body_metrics"
         ]
 

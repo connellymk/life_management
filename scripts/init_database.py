@@ -57,9 +57,8 @@ def main():
     print("=" * 60)
     print("\nDatabase location: data.db")
     print("\nNext steps:")
-    print("  1. Run financial sync to populate data")
-    print("  2. Run health sync to populate metrics")
-    print("  3. Query data using SQL or storage modules")
+    print("  1. Run health sync to populate metrics")
+    print("  2. Query data using SQL or storage modules")
     print("\n" + "=" * 60 + "\n")
 
 
