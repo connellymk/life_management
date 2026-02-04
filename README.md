@@ -172,7 +172,7 @@ python orchestrators/sync_health.py --dry-run
 python orchestrators/sync_health.py --health-check
 
 # Sync specific date range
-python orchestrators/sync_health.py --start-date 2026-01-01 --end-date 2026-01-31
+python orchestrators/sync_health.py --start-date 2026-02-01 --end-date 2026-02-04
 ```
 
 #### Financial Sync (SQL Only)
