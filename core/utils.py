@@ -1,6 +1,6 @@
 """
-Utility functions for Calendar Sync
-Includes logging, retry logic, rate limiting, and helper functions
+Shared utility functions for the personal assistant system.
+Includes logging, retry logic, rate limiting, and helper functions.
 """
 
 import logging
@@ -299,36 +299,7 @@ def format_duration(seconds: float) -> str:
 logger = setup_logging()
 
 
-if __name__ == "__main__":
-    # Test utilities
-    print("Testing utilities...\n")
-
-    # Test logging
-    logger.info("Test info message")
-    logger.warning("Test warning message")
-    logger.error("Test error message")
-
-    # Test external ID generation
-    external_id = generate_external_id("google_personal", "evt123")
-    print(f"Generated external ID: {external_id}")
-
-    source, source_id = parse_external_id(external_id)
-    print(f"Parsed: source={source}, source_id={source_id}")
-
-    # Test rate limiter
-    print("\nTesting rate limiter (3 calls per second)...")
-    rate_limiter = RateLimiter(calls_per_second=3)
-    start = time.time()
-    for i in range(5):
-        rate_limiter.wait_if_needed()
-        print(f"Call {i + 1} at {time.time() - start:.2f}s")
-
-    print("\n✓ All tests passed!")
-
-
-# ============================================================
-# Unit Conversion Functions (for health/training data)
-# ============================================================
+# ── Unit Conversion (health/training data) ────────────────────────────────
 
 def convert_meters_to_miles(meters: float) -> float:
     """Convert meters to miles."""
@@ -369,26 +340,6 @@ def convert_pace_to_imperial(pace_mps: float) -> str:
 def retry_api_call(func):
     """
     Decorator to retry API calls with exponential backoff.
-    Uses the existing retry_with_backoff decorator.
+    Convenience wrapper around retry_with_backoff with default settings.
     """
     return retry_with_backoff(max_retries=3)(func)
-
-
-def rate_limit(calls_per_second: float = 3.0):
-    """
-    Decorator to rate limit function calls.
-
-    Args:
-        calls_per_second: Maximum number of calls per second
-
-    Returns:
-        Decorated function that respects rate limits
-    """
-    rate_limiter = RateLimiter(calls_per_second=calls_per_second)
-
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            rate_limiter.wait_if_needed()
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator

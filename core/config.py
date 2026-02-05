@@ -21,7 +21,7 @@ class Config:
     NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
 
     # Notion Database IDs
-    NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "2e890d86-c150-801e-87d3-000b40a2b7f7")
+    NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "")
     NOTION_WORKOUTS_DB_ID = os.getenv("NOTION_WORKOUTS_DB_ID", "")
     NOTION_DAILY_TRACKING_DB_ID = os.getenv("NOTION_DAILY_TRACKING_DB_ID", "")
     # Daily Tracking doubles as the Day dimension table for cross-database relations
