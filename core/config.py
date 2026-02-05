@@ -21,7 +21,7 @@ class Config:
     NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
 
     # Notion Database IDs
-    NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "2e890d86-c150-801e-87d3-000b40a2b7f7")
+    NOTION_CALENDAR_DB_ID = os.getenv("NOTION_CALENDAR_DB_ID", "")
     NOTION_WORKOUTS_DB_ID = os.getenv("NOTION_WORKOUTS_DB_ID", "")
     NOTION_DAILY_TRACKING_DB_ID = os.getenv("NOTION_DAILY_TRACKING_DB_ID", "")
     # Daily Tracking doubles as the Day dimension table for cross-database relations
@@ -52,9 +52,6 @@ class Config:
     LOG_PATH = os.getenv("LOG_PATH", "logs/sync.log")
     LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", "10485760"))
     LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "5"))
-
-    # Database
-    DATA_DB_PATH = os.getenv("DATA_DB_PATH", "data.db")
 
     # Base directory
     BASE_DIR = Path(__file__).parent.parent
@@ -96,7 +93,6 @@ class GoogleCalendarConfig(Config):
             )
 
         return len(errors) == 0, errors
-
 
 class GarminConfig(Config):
     """Garmin specific configuration."""

@@ -7,13 +7,20 @@ __pycache__/
 venv/
 env/
 ENV/
+*.egg-info/
+dist/
+build/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Environment variables
 .env
 
 # Credentials
 credentials/
-*.json
 *.oauth
 
 # Logs
@@ -34,7 +41,3 @@ state.db
 # OS
 .DS_Store
 Thumbs.db
-
-# Archive
-_archive/
-tmpclaude-*

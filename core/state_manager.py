@@ -1,7 +1,7 @@
 """
-State management system using SQLite
+State management system using SQLite.
 Tracks sync history, event mappings, and provides fast duplicate checking
-Supports all integrations (calendar, health, finance, etc.)
+for calendar and health integrations.
 """
 
 import sqlite3
