@@ -120,7 +120,7 @@ python orchestrators/sync_health.py --metrics-only    # daily metrics only
 python orchestrators/sync_health.py --body-only       # body composition only
 python orchestrators/sync_health.py --dry-run
 python orchestrators/sync_health.py --health-check
-python orchestrators/sync_health.py --start-date 2025-01-01 --end-date 2025-01-31
+python orchestrators/sync_health.py --start-date 2026-02-01 --end-date 2026-02-06
 ```
 
 ### Automated Sync (cron)
