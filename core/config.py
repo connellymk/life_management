@@ -42,6 +42,12 @@ class Config:
     GARMIN_EMAIL = os.getenv("GARMIN_EMAIL", "")
     GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD", "")
 
+    # Kroger (Smith's Food & Drug / Kroger-family stores)
+    KROGER_CLIENT_ID = os.getenv("KROGER_CLIENT_ID", "")
+    KROGER_CLIENT_SECRET = os.getenv("KROGER_CLIENT_SECRET", "")
+    KROGER_REDIRECT_URI = os.getenv("KROGER_REDIRECT_URI", "http://localhost:8000/callback")
+    KROGER_LOCATION_ID = os.getenv("KROGER_LOCATION_ID", "")
+
     # Sync settings
     SYNC_LOOKBACK_DAYS = int(os.getenv("SYNC_LOOKBACK_DAYS", "90"))
     SYNC_LOOKAHEAD_DAYS = int(os.getenv("SYNC_LOOKAHEAD_DAYS", "365"))
@@ -93,6 +99,24 @@ class GoogleCalendarConfig(Config):
             )
 
         return len(errors) == 0, errors
+
+class KrogerConfig(Config):
+    """Kroger API configuration."""
+
+    @classmethod
+    def validate(cls) -> tuple[bool, List[str]]:
+        """Validate Kroger configuration."""
+        errors = []
+
+        if not cls.KROGER_CLIENT_ID:
+            errors.append("KROGER_CLIENT_ID not set — register at developer.kroger.com")
+        if not cls.KROGER_CLIENT_SECRET:
+            errors.append("KROGER_CLIENT_SECRET not set")
+        if not cls.KROGER_REDIRECT_URI:
+            errors.append("KROGER_REDIRECT_URI not set")
+
+        return len(errors) == 0, errors
+
 
 class GarminConfig(Config):
     """Garmin specific configuration."""

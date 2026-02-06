@@ -1,0 +1,65 @@
+# Week 7 Grocery List — Feb 9-15, 2026
+# AIP Meal Plan
+# Usage: python orchestrators/grocery_cart.py --file grocery_lists/week7_feb9-15.txt
+
+# === PROTEINS ===
+2x ground turkey 1 lb
+chicken breasts boneless skinless 1.5 lb
+chicken thighs boneless skinless 1.5 lb
+bone-in skin-on chicken thighs 8 pack
+2x flank steak 1.5 lb
+
+# === PRODUCE ===
+7x sweet potatoes large
+12x avocados
+3x zucchini large
+baby spinach 10 oz
+baby kale 5 oz
+5x red onion
+2x garlic head
+10x large carrots
+2x parsnips
+3x cucumber
+broccoli florets 2 lb
+snap peas 1 lb
+green onions bunch
+fresh ginger root
+mixed salad greens large container
+2x mixed salad greens large container
+purple cabbage
+10x green plantains
+8x limes
+7x lemons
+fresh blueberries pint
+fresh strawberries pint
+fresh raspberries
+fresh mango
+2x banana
+fresh cilantro bunch
+2x fresh cilantro bunch
+fresh parsley bunch
+2x fresh parsley bunch
+fresh basil bunch
+fresh mint bunch
+
+# === PANTRY ===
+avocado oil
+extra virgin olive oil
+coconut oil
+3x coconut milk full fat canned
+coconut cream canned
+coconut aminos
+chia seeds
+unsweetened coconut flakes
+pure maple syrup
+vanilla extract pure
+
+# === SPICES (check pantry first) ===
+sea salt
+garlic powder
+ground turmeric
+dried sage
+dried thyme
+dried rosemary
+dried oregano
+dried basil
