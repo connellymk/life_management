@@ -224,3 +224,154 @@ def sample_calendar_sync_stats():
         "incremental": True,
         "new_sync_token": "token_abc123",
     }
+
+
+# ---------------------------------------------------------------------------
+# Kroger fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_kroger_client():
+    """Mock KrogerClient."""
+    client = MagicMock()
+    client.client_id = "test-client-id"
+    client.client_secret = "test-client-secret"
+    client.redirect_uri = "http://localhost:8000/callback"
+    client.location_id = "70600170"
+    client._client_token = "mock-client-token"
+    client._client_token_expires = 9999999999.0
+    client._user_token = "mock-user-token"
+    client._user_token_expires = 9999999999.0
+    client._refresh_token = "mock-refresh-token"
+    client.authenticate_user.return_value = True
+    client.find_locations.return_value = []
+    client.search_products.return_value = []
+    client.search_and_select_product.return_value = None
+    client.add_to_cart.return_value = True
+    return client
+
+
+@pytest.fixture
+def sample_kroger_locations():
+    """Sample Kroger location data."""
+    return [
+        {
+            "location_id": "70600170",
+            "name": "Smith's Food & Drug",
+            "chain": "SMITHS",
+            "address": {
+                "addressLine1": "455 S 500 E",
+                "city": "Salt Lake City",
+                "state": "UT",
+                "zipCode": "84102",
+            },
+            "phone": "801-355-2411",
+        },
+        {
+            "location_id": "70600094",
+            "name": "Smith's Food & Drug",
+            "chain": "SMITHS",
+            "address": {
+                "addressLine1": "876 E 800 S",
+                "city": "Salt Lake City",
+                "state": "UT",
+                "zipCode": "84105",
+            },
+            "phone": "801-363-5434",
+        },
+    ]
+
+
+@pytest.fixture
+def sample_kroger_products():
+    """Sample Kroger product search results."""
+    return [
+        {
+            "upc": "0000000004225",
+            "product_id": "0000000004225",
+            "brand": "Fresh Avocados",
+            "description": "Fresh Large Ripe Avocado",
+            "size": "1 each",
+            "price": 2.79,
+            "price_display": "$2.79",
+            "in_stock": True,
+        },
+        {
+            "upc": "0001111042010",
+            "product_id": "0001111042010",
+            "brand": "Heritage Farm",
+            "description": "Heritage Farm® Boneless Skinless Chicken Thighs",
+            "size": "1 lb",
+            "price": 3.99,
+            "price_display": "$3.99",
+            "in_stock": True,
+        },
+        {
+            "upc": "0000000094072",
+            "product_id": "0000000094072",
+            "brand": "Fresh Potatoes",
+            "description": "Organic Gold Jewel Sweet Potatoes",
+            "size": "1 lb",
+            "price": 2.79,
+            "price_display": "$2.79",
+            "in_stock": True,
+        },
+    ]
+
+
+@pytest.fixture
+def sample_kroger_product_out_of_stock():
+    """Sample out-of-stock product."""
+    return {
+        "upc": "0099999999999",
+        "product_id": "0099999999999",
+        "brand": "Specialty Brand",
+        "description": "Rare Ingredient",
+        "size": "8 oz",
+        "price": 12.99,
+        "price_display": "$12.99",
+        "in_stock": False,
+    }
+
+
+@pytest.fixture
+def sample_kroger_api_product_response():
+    """Raw Kroger API product response (before client parsing)."""
+    return {
+        "data": [
+            {
+                "productId": "0000000004225",
+                "upc": "0000000004225",
+                "brand": "Fresh Avocados",
+                "description": "Fresh Large Ripe Avocado",
+                "items": [
+                    {
+                        "size": "1 each",
+                        "price": {"regular": 2.79, "promo": 0},
+                        "fulfillment": {"curbside": True, "inStore": True},
+                    }
+                ],
+            },
+        ],
+    }
+
+
+@pytest.fixture
+def sample_kroger_api_location_response():
+    """Raw Kroger API location response (before client parsing)."""
+    return {
+        "data": [
+            {
+                "locationId": "70600170",
+                "name": "Smith's Food & Drug",
+                "chain": "SMITHS",
+                "address": {
+                    "addressLine1": "455 S 500 E",
+                    "city": "Salt Lake City",
+                    "state": "UT",
+                    "zipCode": "84102",
+                },
+                "phone": "801-355-2411",
+            },
+        ],
+    }
