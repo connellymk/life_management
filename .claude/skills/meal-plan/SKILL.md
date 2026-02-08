@@ -90,7 +90,6 @@ After creating the meal plan, compile a consolidated grocery list:
 1. Review all ingredients across every meal for the week
 2. Consolidate duplicates and estimate quantities
 3. Group by category matching the existing format (see `grocery_lists/` for examples)
-4. Subtract common pantry staples the family likely has (oils, spices, coconut aminos, maple syrup, vanilla — only include these if a recipe uses an unusual quantity)
 
 Write the grocery list to: `grocery_lists/week{N}_{mon_date}-{sun_date}.txt`
 
