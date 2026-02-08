@@ -12,6 +12,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 import webbrowser
@@ -372,11 +373,21 @@ class KrogerClient:
             if items:
                 size = items[0].get("size")
 
+            # Extract categories and aisle info for relevance filtering
+            categories = p.get("categories", [])
+            aisle_desc = ""
+            for aisle in p.get("aisleLocations", []):
+                if aisle.get("description"):
+                    aisle_desc = aisle["description"]
+                    break
+
             products.append({
                 "upc": p.get("upc"),
                 "product_id": p.get("productId"),
                 "brand": p.get("brand"),
                 "description": p.get("description"),
+                "categories": categories,
+                "aisle": aisle_desc,
                 "size": size,
                 "price": price,
                 "price_display": price_str,
@@ -422,6 +433,101 @@ class KrogerClient:
 
     # ── High-level helpers ─────────────────────────────────────────────
 
+    @staticmethod
+    def _keyword_matches(keyword: str, text: str) -> bool:
+        """Check if a keyword matches text, handling simple plural/singular."""
+        if keyword in text:
+            return True
+        # ies->y: blueberries->blueberry, strawberries->strawberry
+        if keyword.endswith("ies"):
+            stem = keyword[:-3] + "y"
+            if stem in text:
+                return True
+        # es->e or es->"": potatoes->potato, tomatoes->tomato
+        if keyword.endswith("es") and len(keyword) > 4:
+            if keyword[:-1] in text or keyword[:-2] in text:
+                return True
+        # s->"": carrots->carrot, onions->onion
+        elif keyword.endswith("s") and len(keyword) > 3:
+            if keyword[:-1] in text:
+                return True
+        return False
+
+    # Phrases in product descriptions that indicate a non-ingredient product.
+    # If the search term doesn't contain the phrase but the product does, penalize.
+    _NON_INGREDIENT_SIGNALS = {
+        # Frozen desserts
+        "ice cream", "gelato", "frozen dessert", "popsicle", "sorbet",
+        # Baby/infant
+        "baby food", "stage 1", "stage 2", "stage 3", "stage 4",
+        "infant formula", "toddler", "gerber", "beech-nut",
+        # Candy/gum
+        "gum ", "mints ", "mentos", "candy", "candy bar",
+        # Beverages (non-ingredient)
+        "soda", "cola", "energy drink", "lemonade", "sprite",
+        "caffeine free", "mouthwash", "scope",
+        # Household/personal care
+        "lotion", "shampoo", "soap", "tissue", "tissues", "detergent",
+        "cleanser", "body wash", "deodorant", "axe ",
+        "candle", "air freshener", "wipes",
+        # Floral
+        "flower", "flowers", "bouquet", "carnation", "roses", "bloom",
+        # Snacks (not raw ingredients)
+        "chips", "crackers", "pretzels", "snack mix", "snack ", "snacks",
+        # Prepared/processed foods
+        "sausage roll", "breakfast sausage",
+        "cake", "cookie", "cookies", "brownie", "muffin", "loaf cake", "pastry",
+        "hummus", "salsa", "dip",
+        "mozzarella", "cheese", "yogurt",
+        # Juice/drinks (when searching for whole fruit)
+        "juice", "cocktail mix", "concentrate",
+        # Pouch/squeezable (usually baby food or processed)
+        "pouch,", "pouch ", "squeezable",
+    }
+
+    @staticmethod
+    def _relevance_score(
+        product: Dict[str, Any],
+        keywords: List[str],
+        search_term: str,
+    ) -> float:
+        """
+        Score how well a product matches the search intent.
+
+        Combines keyword overlap (what fraction of search terms appear in the
+        product text) with a penalty for products that look like wrong
+        categories (e.g., ice cream when searching for fresh fruit).
+        Returns 0.0–1.0.
+        """
+        desc = (product.get("description") or "").lower()
+        brand = (product.get("brand") or "").lower()
+        text = f"{brand} {desc}"
+
+        if not keywords:
+            return 0.0
+
+        matched = sum(1 for kw in keywords if KrogerClient._keyword_matches(kw, text))
+        keyword_score = matched / len(keywords)
+
+        # The last keyword is usually the core noun (e.g., "plantains" in
+        # "green plantains", "sage" in "dried sage").  If it doesn't match
+        # at all, apply a heavy penalty — matching only adjectives like
+        # "green" or "fresh" without the main ingredient is unreliable.
+        if len(keywords) >= 2:
+            core_keyword = keywords[-1]
+            if not KrogerClient._keyword_matches(core_keyword, text):
+                keyword_score *= 0.3
+
+        # Penalize products whose description contains non-ingredient signals
+        # that are NOT in the original search term
+        search_lower = search_term.lower()
+        for signal in KrogerClient._NON_INGREDIENT_SIGNALS:
+            if signal in text and signal not in search_lower:
+                keyword_score *= 0.3
+                break
+
+        return keyword_score
+
     def search_and_select_product(
         self,
         term: str,
@@ -429,7 +535,7 @@ class KrogerClient:
     ) -> Optional[Dict[str, Any]]:
         """
         Search for a product and return the best match.
-        Prefers in-stock items and picks the first result.
+        Scores results by keyword relevance and prefers in-stock items.
 
         Args:
             term: Search keyword.
@@ -438,10 +544,27 @@ class KrogerClient:
         Returns:
             Best-match product dict, or None.
         """
-        products = self.search_products(term, location_id=location_id, limit=5)
+        products = self.search_products(term, location_id=location_id, limit=10)
         if not products:
             return None
 
-        # Prefer in-stock products
-        in_stock = [p for p in products if p.get("in_stock")]
-        return in_stock[0] if in_stock else products[0]
+        # Build keyword list from search term (ignore short words)
+        keywords = [w.lower() for w in re.split(r"\s+", term) if len(w) >= 3]
+
+        # Score each product by relevance
+        scored = []
+        for p in products:
+            score = self._relevance_score(p, keywords, term)
+            in_stock = 1 if p.get("in_stock") else 0
+            scored.append((score, in_stock, p))
+
+        # Sort by relevance (desc), then in-stock (desc)
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+
+        # Require at least some keyword overlap to avoid wild mismatches
+        best_score, _, best_product = scored[0]
+        if best_score == 0.0:
+            logger.warning(f"No relevant results for '{term}' — top result didn't match any keywords")
+            return None
+
+        return best_product

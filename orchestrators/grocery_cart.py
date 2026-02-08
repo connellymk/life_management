@@ -24,6 +24,7 @@ Usage:
     python orchestrators/grocery_cart.py --file grocery_list.txt --dry-run
 """
 
+import re
 import sys
 import time
 import argparse
@@ -163,6 +164,19 @@ def add_items_to_cart(
         logger.info("! DRY RUN — no items will be added to cart")
     logger.info("=" * 60)
 
+    # Pattern to strip weight/packaging suffixes that confuse product search
+    # Matches things like "1 lb", "1.5 lb", "10 oz", "2 lb", "pint", "8 pack", "bunch"
+    _size_pattern = re.compile(
+        r"\s+\d*\.?\d+\s*(lb|lbs|oz|pint|pints|pack|ct|each|bunch|head|container)\b"
+        r"|\s+(pint|bunch|head|large container)\s*$",
+        re.IGNORECASE,
+    )
+    # Qualifiers that help humans but confuse the product search API
+    _qualifier_pattern = re.compile(
+        r"\b(full fat|low fat|non-fat|canned|boxed)\b",
+        re.IGNORECASE,
+    )
+
     start_time = time.time()
     stats = {"searched": 0, "found": 0, "added": 0, "not_found": 0, "skipped": 0}
     cart_items = []  # Accumulate for batch add
@@ -190,10 +204,18 @@ def add_items_to_cart(
             except ValueError:
                 pass
 
-        stats["searched"] += 1
-        logger.info(f"\n[{i}/{len(items)}] Searching: {search_term} (qty: {quantity})")
+        # Strip weight/packaging suffixes that hurt search relevance
+        clean_term = _size_pattern.sub("", search_term).strip()
+        clean_term = _qualifier_pattern.sub("", clean_term).strip()
+        # Collapse any double spaces left after stripping
+        clean_term = re.sub(r"\s{2,}", " ", clean_term)
+        if not clean_term:
+            clean_term = search_term  # fallback if regex ate everything
 
-        product = client.search_and_select_product(search_term)
+        stats["searched"] += 1
+        logger.info(f"\n[{i}/{len(items)}] Searching: {clean_term} (qty: {quantity})")
+
+        product = client.search_and_select_product(clean_term)
 
         if not product:
             logger.warning(f"  X No results for '{search_term}'")
