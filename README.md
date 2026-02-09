@@ -108,7 +108,7 @@ See `.env.example` for the full list of optional settings (sync window, logging,
 python orchestrators/sync_calendar.py                # sync all calendars
 python orchestrators/sync_calendar.py --dry-run       # preview without writing
 python orchestrators/sync_calendar.py --health-check  # verify config and API access
-python orchestrators/sync_calendar.py --start-date 2025-01-01 --end-date 2025-12-31
+python orchestrators/sync_calendar.py --start-date 2026-02-01 --end-date 2026-03-01
 ```
 
 ### Health Sync
